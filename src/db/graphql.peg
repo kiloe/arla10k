@@ -1,0 +1,132 @@
+{
+	function deepmerge(target, src) {
+		var array = Array.isArray(src);
+		var dst = array && [] || {};
+
+		if (array) {
+			target = target || [];
+			dst = dst.concat(target);
+			src.forEach(function(e, i) {
+				if (typeof dst[i] === 'undefined') {
+					dst[i] = e;
+				} else if (typeof e === 'object') {
+					dst[i] = deepmerge(target[i], e);
+				} else {
+					if (target.indexOf(e) === -1) {
+						dst.push(e);
+					}
+				}
+			});
+		} else {
+			if (target && typeof target === 'object') {
+				Object.keys(target).forEach(function (key) {
+					dst[key] = target[key];
+				})
+			}
+			Object.keys(src).forEach(function (key) {
+				if (typeof src[key] !== 'object' || !src[key]) {
+					dst[key] = src[key];
+				}
+				else {
+					if (!target[key]) {
+						dst[key] = src[key];
+					} else {
+						dst[key] = deepmerge(target[key], src[key]); 
+					}
+				}
+			});
+		}
+
+		return dst;
+	}
+	function flat(props){
+	  return props.reduce(function(o, p){
+		if( !o[p.name] ){
+		  o[p.name] = p;
+		  return o;
+		}
+		if( p.kind == 'property' ){
+		  if( o[p.name].kind != 'property' ){
+			throw "property " + p.name + " clashes with call of same name";
+		  }
+		  return o;
+		}
+		o[p.name] = deepmerge(o[p.name], p);
+		return o;
+	  }, {});
+	}
+	function expression(e, props){
+	  
+	  var o = {
+		kind: 'relation',
+		name: e[0][0],
+		filters: e.slice(1).reduce(function(o, f){
+		  o[ f[0] ] = f[1];
+		  return o;
+		},{}),
+		props:flat(props) 
+	  }
+	  var id = e[0][1] && e[0][1][0];
+	  if( id ){
+		o.id = id;
+	  }
+	  return o;
+	}
+}
+
+start
+  = c:call ws* { return c }
+
+call
+  = ws* expr:call_exprs lb props:property_list rb  { return expression(expr, props) }
+
+call_exprs
+  = (call_expr_parent / call_expr)*
+
+call_expr_parent
+  = p:call_expr "." { return p }
+
+call_expr
+  = name:$[a-z0-9_]+ args:call_expr_args? { return [name,args] }
+
+call_expr_args
+  = "(" args:(first_arg / arg)* ")" { return args } 
+
+first_arg
+  = ws* arg:$arg ws* "," { return arg } 
+
+arg
+  = quoted_text_arg / text_arg
+
+quoted_text_arg
+  = "'" a:text_arg "'" { return a }
+
+text_arg
+  = a:$[a-z0-9!=>\-< \t]+ { return a.trim() }
+
+property_list
+  = p:(property_list_item*) { return p }
+
+property_list_item
+  = ws* p:property { return p }
+
+property
+  = p:(call / name) comma {return p}
+
+name
+  = ws* name:$[a-z_0-9]+ { return {kind: 'property', name: name} }
+
+comma
+  = ws* ("," / ws*)
+
+lb
+  = ws* "{"
+
+rb
+  = ws* "}"
+
+ws
+  = [ \t\n]
+
+integer "integer"
+  = digits:[0-9]+ { return parseInt(digits.join(""), 10); }

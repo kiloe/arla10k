@@ -1,0 +1,8 @@
+dist/*
+pkg/*
+bin/*
+.vagrant/*
+src/api/node_modules/*
+src/golang.org/*
+src/github.com/*
+src/bitbucket.org/*
