@@ -4,7 +4,7 @@ import console from "./console";
 import db from "./db";
 import gql from "./graphql"
 
-var SHOW_DEBUG = false;
+var SHOW_DEBUG = true;
 
 var listeners = {};
 var tests = [];
@@ -13,7 +13,7 @@ var ddl = [];
 var actions = {};
 
 export function action(name, fn){
-	actions[name] = fn;
+	actions[name] = fn.bind(db);
 }
 
 function addListener(kind, op, table, fn){
@@ -151,7 +151,6 @@ function gqlToSql({name, properties, refs}, {id, props, filters}, p, p_key, r = 
 	var v = `v${ i }`;
 	var cols = Object.keys(props || {}).map(function(k){
 		var o = props[k];
-		var r2 = refs[k];
 		if( o.kind == 'property' ){
 			if( properties[k] ){
 				return `${ t }.${ k }`;
@@ -159,6 +158,10 @@ function gqlToSql({name, properties, refs}, {id, props, filters}, p, p_key, r = 
 				return `${ v }.${ k }`;
 			}
 			throw "no such column "+k+" for "+name;
+		}
+		var r2 = refs[k];
+		if( !r2 ){
+			throw "no such edge "+k+" for "+name;
 		}
 		var x = `x${ i }`;
 		return `(with ${x} as ( ${ gqlToSql(schema[r2.hasOne || r2.hasMany], o, t, `${ name }_id`, r2, ++i) }) select json_agg(${x}.*) from ${x} ) as ${ k }`;
@@ -261,7 +264,7 @@ export var sql_exports = {
 			if( err.line && err.offset ){
 				console.warn( query.split(/\n/)[err.line-1] );
 				console.warn( `${ Array(err.column).join('-') }^` );
-				throw new SyntaxError(`graphql: line ${err.line}, column ${err.column}: ${err.message}`)
+				throw new SyntaxError(`arla_query: line ${err.line}, column ${err.column}: ${err.message}`)
 			}
 			console.warn(ast);
 			console.warn(sql);

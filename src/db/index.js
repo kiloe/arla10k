@@ -1,9 +1,6 @@
 import {define, action, sql_exports} from "./runtime";
 import * as actions from "./app/actions";
 import * as schema from "./app/schema";
-import {log} from "./console";
-
-log(schema);
 
 // register tables from app config
 Object.keys(schema).forEach(function(k){

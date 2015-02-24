@@ -45,13 +45,15 @@ define('member', {
 			assert( db.count( 'select * from member_email WHERE member_id = $1', r.id ) > 0 );
 		} );
 		var org = db.insert( 'org', {
+			id: r.id,
 			name: "Personal"
-		} );
+		} )[0];
 		var membership = db.insert( 'org_member', {
+			id: r.id,
 			org_id: org.id,
 			member_id: r.id,
 			is_admin: true,
-		} );
+		} )[0];
 	}
 })
 
@@ -93,17 +95,19 @@ define('member_email', {
 				var org = db.query( 'select * from org where domain = $1', domain )[ 0 ];
 				if ( !org ) {
 					org = db.insert( 'org', {
+						id: r.id,
 						domain: domain,
 						is_company: true,
-					} );
+					} )[0];
 				}
 				var membership = db.query( 'select * from org_member where org_id = $1 and member_id = $2', [ org.id, r.member_id ] )[ 0 ];
 				if ( !membership ) {
 					membership = db.insert( 'org_member', {
+						id: r.id,
 						org_id: org.id,
 						member_id: r.member_id,
 						is_admin: db.count( 'select * from org_member where org_id = $1', org.id ) === 0,
-					} )
+					} )[0]
 				}
 			}
 		}

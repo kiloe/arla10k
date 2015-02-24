@@ -1,7 +1,7 @@
 FROM ubuntu:14.10
 
 # install dev dependencies
-RUN apt-get update && apt-get install -y golang build-essential
+RUN apt-get update && apt-get install -y golang make
 
 # set locale
 RUN echo 'LANG="en_GB.UTF-8"' > /etc/default/locale && locale-gen en_GB.UTF-8 && dpkg-reconfigure locales
@@ -23,13 +23,16 @@ RUN apt-get install -y \
 # install nodejs and globally install some modules to speed up rebuilds
 RUN apt-get install -y nodejs npm && \
     ln -s /usr/bin/nodejs /usr/bin/node && \
-    npm install -g babel && \
-    npm install -g mocha chai supertest tmp browserify babelify && \
+    npm install -g browserify babelify && \
+    npm install -g mocha chai supertest tmp && \
     npm install -g pegjs
 
 # install
 COPY . /tmp/build
 RUN cd /tmp/build && make -f Makefile.mk clean install && rm -rf /tmp/build
+
+# tidy up
+
 
 EXPOSE 3000
 ENTRYPOINT ["/var/lib/arla/bin/init"]

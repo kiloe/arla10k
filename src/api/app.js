@@ -10,6 +10,7 @@ var bodyParser = require('body-parser');
 var errors = require('./errors');
 var moment = require('moment');
 var Promise = require('es6-promise').Promise;
+var uuid = require('node-uuid');
 
 module.exports = function(opts){
 
@@ -36,7 +37,8 @@ module.exports = function(opts){
 	app.port = opts.port || 3000;
 
 	// static assets path
-	app.assetPath = process.env.APP_PATH || "/var/lib/arla/app/public"
+	app.assetPath = opts.assetPath || process.env.APP_PATH || "/var/lib/arla/app/public"
+	app.use(express.static(app.assetPath));
 
 	// Postgres connection
 	app.conString = opts.conString || process.env.QUERY_DATABASE || "socket:/var/run/postgresql/?encoding=utf8";
@@ -70,12 +72,16 @@ module.exports = function(opts){
 		}
 	}));
 
-	// All responses are either SUCCESS (200), FAIL (400) or FATAL (500)
+	// All responses are either SUCCESS (200), FAIL (400), UNAUTH (403) or FATAL (500)
 	app.use(function(req, res, next){
 		res.ok = function(o){
-			res.json(o);
+			res.json(o || {});
+			if( app.debug ){
+				console.log('response ok:', JSON.stringify(o,null,4));
+			}
 		}
-		res.fail = function(errs){
+		res.fail = function(err){
+			var errs = err;
 			if( !Array.isArray(errs) ){
 				errs = [errs];
 			}
@@ -94,7 +100,18 @@ module.exports = function(opts){
 					}
 				});
 			}
-			res.status(400).json({
+			var st;
+			switch(err){
+				case errors.InvalidUserId = 'invalid user id':
+				case errors.InvalidPassword = 'invalid password':
+				case errors.InvalidToken = 'invalid token':
+				case errors.TokenExpired = 'token expired':
+					st = 403;
+					break;
+				default:
+					st = 400;
+			}
+			res.status(st).json({
 				errors: errs.map(function(e){
 					return e.toString()
 				})
@@ -203,12 +220,12 @@ module.exports = function(opts){
 	function find(id){
 		if( /^[0-9a-f]{22}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ){
 			return Promise.resolve(id);
-		} else if( /.@./.test(id) ){
-			return app.query('select member.id from member left join member_email on member_email.member_id = member.id where member_email.address = lower($1)', [id]).then(function(rows){
-				if( rows.length == 0 || !rows[0].id ){
+		} else {
+			return exec('find_member', [id]).then(function(id){
+				if( !id ){
 					throw errors.InvalidUserId;
 				}
-				return rows[0].id
+				return id
 			})
 		}
 		return Promise.reject(errors.InvalidUserId);
@@ -276,9 +293,12 @@ module.exports = function(opts){
 
 	// Execute an action on the data
 	function exec(name, args, doNotLog){
-		return app.query('select arla_exec($1, $2)', [name, JSON.stringify(args)]).then(function(){
+		return app.query('select arla_exec($1::text, $2::json) as v', [name, JSON.stringify(args)]).then(function(rows){
+			var v = rows && rows.length > 0 ? rows[0].v : null;
 			var o = [name, args]; // action name, args;
-			return doNotLog ? o : app.wal.put(o)
+			return doNotLog ? v : app.wal.put(o).then(function(){
+				return v;
+			})
 		});
 	}
 
@@ -287,19 +307,28 @@ module.exports = function(opts){
 		var o = req.body;
 		return exec(o.name, o.args).then(function(){
 			res.ok();
+		}).catch(function(err){
+			res.fail(err);
 		})
 	}
 
 	// Handler for graphql-like queries
 	function queryHandler(req, res){
-		return app.query('select arla_query($1::text) as res', [req.body]).then(function(rows){
+		var q = 'member('+req.uid+'){' + req.body + '}';
+		return app.query('select arla_query($1::text) as res', [q]).then(function(rows){
 			if( rows.length == 0 ){
 				return res.fail('no rows returned');
 			}
 			if( !rows[0].res ){
 				return res.fail('unexpected response from query');
 			}
-			res.ok(rows[0].res);
+			// if nothing at all in the response this likely means
+			// that while we trust the token, it is no longer referring to
+			// a member in the query store
+			if( !rows[0].res.member ){
+				return res.fail(errors.InvalidToken);
+			}
+			res.ok(rows[0].res.member);
 		}).catch(function(err){
 			res.fail(err)
 		});
@@ -312,7 +341,8 @@ module.exports = function(opts){
 			u.id = uuid.v4();
 		}
 		return app.passwd.set(u.id, u.password).then(function(){
-			return exec('create_member', [u.id, u.email])
+			delete u.password;
+			return exec('create_member', [u])
 		}).then(function(){
 			res.ok({
 				access_token: jwt.encode({
@@ -330,10 +360,6 @@ module.exports = function(opts){
 	app.post('/auth', authenticationHandler);
 	app.post('/exec', execHandler);
 	app.post('/query', queryHandler);
-
-	app.get('/', function(req, res){
-		res.ok({hello: true});
-	})
 
 	return app;
 

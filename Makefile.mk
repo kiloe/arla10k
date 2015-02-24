@@ -27,10 +27,7 @@ dist/bin/init: dist/bin/initdb
 	$(GO) get init
 	$(GO) build -o $@ init
 
-dist/app:
-	cp -r test-app $@
-
-build: dist/bin/init dist/app
+build: dist/bin/init
 
 install: build
 	mkdir -p /var/lib/arla/

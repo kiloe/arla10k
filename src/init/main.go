@@ -10,6 +10,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -20,6 +21,8 @@ import (
 	"syscall"
 	"time"
 )
+
+var testMode = flag.Bool("test", false, "run tests then exit")
 
 const (
 	postgresCmd        = "/usr/bin/pg_ctlcluster"
@@ -136,7 +139,7 @@ func start() error {
 		return err
 	}
 
-	if true {
+	if *testMode {
 		return runTests()
 	}
 	// Boot API server
@@ -158,6 +161,7 @@ func start() error {
 }
 
 func main() {
+	flag.Parse()
 	if err := start(); err != nil {
 		log.Fatal(err)
 	}

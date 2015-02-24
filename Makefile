@@ -4,22 +4,25 @@
 default: build
 
 SHELL := /bin/bash
-
+PWD := $(shell pwd)
 
 build:
-	docker build -t arla .
-
-enter: build
-	docker run -it --rm --name arla_test arla /bin/bash
+	docker build -t arla/10k .
 
 test: build
-	docker run -it --rm -p 3000:3000 --name arla_test -e AUTH_SECRET=testing arla
+	docker run -it \
+		--rm -p 3000:3000 \
+		--name arla_test \
+		-v $(PWD)/test-app:/var/lib/arla/app \
+		-e AUTH_SECRET=testing \
+		-e DEBUG=true \
+		arla/10k -test
 
 release: test
-	docker push arla
+	docker push arla/10k
 
 clean:
-	docker rmi arla
-	docker rm arla_test
+	docker rm  arla_test || echo 'ok'
+	docker rmi arla || echo 'ok'
 
 .PHONY: default build test release clean enter
