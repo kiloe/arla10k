@@ -32,9 +32,12 @@ CREATE OR REPLACE FUNCTION arla_migrate() RETURNS json AS $$
 	return JSON.stringify(plv8.functions.arla_migrate())
 $$ LANGUAGE "plv8";
 
--- create a member
+-- execute an action
 CREATE OR REPLACE FUNCTION arla_exec(name text, args json) RETURNS json AS $$
-	return JSON.stringify(plv8.functions.arla_exec(name, args));
+	return JSON.stringify(plv8.functions.arla_exec(name, args, false));
+$$ LANGUAGE "plv8";
+CREATE OR REPLACE FUNCTION arla_exec(name text, args json, replay boolean) RETURNS json AS $$
+	return JSON.stringify(plv8.functions.arla_exec(name, args, replay));
 $$ LANGUAGE "plv8";
 
 -- use graphql to execute a query

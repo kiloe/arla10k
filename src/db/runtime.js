@@ -235,7 +235,7 @@ export var sql_exports = {
 		}
 		return true;
 	},
-	arla_exec(name, args){
+	arla_exec(name, args, replay){
 		var fn = actions[name];
 		if( !fn ){
 			if( /^[a-zA-Z0-9_]+$/.test(name) ){
@@ -244,7 +244,19 @@ export var sql_exports = {
 				throw 'invalid action';
 			}
 		}
-		return fn(...args);
+		try{
+			return fn(...args);
+		}catch(err){
+			if( !replay ){
+				throw err;
+			}
+			if( !actions.resolver ){
+				throw err;
+			}
+			var res = actions.resolver.bind(db)(err, fn, args, actions);
+			console.debug('action', name, args, 'initially failed, but was resolved')
+			return res;
+		}
 	},
 	arla_query(query){
 		try{

@@ -19,7 +19,7 @@ module.exports = function(opts){
 
 	// Default datadir
 	if( !opts.dataDir ){
-		opts.dataDir = '/var/lib/arla/data';
+		opts.dataDir = process.env.APP_DATA || '/var/lib/arla/data';
 	}
 
 	// Set the secret that will be used for auth tokens
@@ -220,15 +220,13 @@ module.exports = function(opts){
 	function find(id){
 		if( /^[0-9a-f]{22}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ){
 			return Promise.resolve(id);
-		} else {
-			return exec('find_member', [id]).then(function(id){
-				if( !id ){
-					throw errors.InvalidUserId;
-				}
-				return id
-			})
 		}
-		return Promise.reject(errors.InvalidUserId);
+		return exec('find_member', [id]).then(function(id){
+			if( !id ){
+				throw errors.InvalidUserId;
+			}
+			return id
+		})
 	}
 
 	function authByToken(token){
@@ -292,11 +290,12 @@ module.exports = function(opts){
 	}
 
 	// Execute an action on the data
-	function exec(name, args, doNotLog){
-		return app.query('select arla_exec($1::text, $2::json) as v', [name, JSON.stringify(args)]).then(function(rows){
+	function exec(name, args, replay){
+		return app.query('select arla_exec($1::text, $2::json, $3::boolean) as v', [name, JSON.stringify(args), replay]).then(function(rows){
 			var v = rows && rows.length > 0 ? rows[0].v : null;
+			console.log('v=>', v);
 			var o = [name, args]; // action name, args;
-			return doNotLog ? v : app.wal.put(o).then(function(){
+			return replay ? v : app.wal.put(o).then(function(){
 				return v;
 			})
 		});
