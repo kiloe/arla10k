@@ -242,8 +242,8 @@ module.exports = function(opts){
 				}
 				if( cols.length > 1 ){
 					console.warn('lookupIdentity returned a rows with more than one column: HINT: it should return a single row with a single "id" columns or just a uuid directly');
-					res = res[ cols[0] ]
 				}
+				res = res[ cols[0] ]
 			}
 			return res;
 		})

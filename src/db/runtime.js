@@ -149,6 +149,9 @@ function gqlToSql(viewer, {name, properties, edges}, {args, props, filters}, par
 		var o = props[k];
 		switch(o.kind){
 		case 'property':
+			if( !parent ){
+				throw `the root entity does not have any properties: ${k} is not valid here`;
+			}
 			return `${ parent }.${ k }`;
 		case 'edge':
 			let x = `x${ i }`;
