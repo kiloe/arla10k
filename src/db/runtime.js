@@ -74,22 +74,27 @@ export function define(name, o){
 	if( !o.edges ){
 		o.edges = {};
 	}
+	let alter = function(s){
+		if(name != 'root'){
+			ddl.push(s)
+		}
+	}
 	o.name = name;
-	ddl.push(`CREATE TABLE ${ plv8.quote_ident(name) } ()`);
-	ddl.push(`CREATE TRIGGER before_trigger BEFORE INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('before')`);
-	ddl.push(`CREATE CONSTRAINT TRIGGER after_trigger AFTER INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('after')`);
+	alter(`CREATE TABLE ${ plv8.quote_ident(name) } ()`);
+	alter(`CREATE TRIGGER before_trigger BEFORE INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('before')`);
+	alter(`CREATE CONSTRAINT TRIGGER after_trigger AFTER INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('after')`);
 	for(let k in o.properties){
-		ddl.push(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(k) } ${ col(o.properties[k]) }`);
+		alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(k) } ${ col(o.properties[k]) }`);
 	}
 	if( !o.properties.id ){
-		ddl.push(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN id UUID PRIMARY KEY DEFAULT uuid_generate_v4()`);
+		alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN id UUID PRIMARY KEY DEFAULT uuid_generate_v4()`);
 		o.properties.id = {type:'uuid'};
 	}
 	if( o.indexes ){
 		for(let k in o.indexes){
 			let idx = o.indexes[k];
 			let using = idx.using ? `USING ${ idx.using }` : '';
-			ddl.push(`CREATE ${ idx.unique ? 'UNIQUE' : '' } INDEX ${ name }_${ k }_idx ON ${ plv8.quote_ident(name) } ${ using } ( ${ idx.on.map(c => plv8.quote_ident(c) ).join(',') } )` );
+			alter(`CREATE ${ idx.unique ? 'UNIQUE' : '' } INDEX ${ name }_${ k }_idx ON ${ plv8.quote_ident(name) } ${ using } ( ${ idx.on.map(c => plv8.quote_ident(c) ).join(',') } )` );
 		}
 	}
 	if( o.beforeChange ){
@@ -233,6 +238,9 @@ export var sql_exports = {
 	},
 	arla_destroy_data(){
 		for(let name in schema){
+			if( name == 'root'){
+				continue;
+			}
 			db.query(`delete from ${plv8.quote_ident(name)}`)
 		}
 		return true;
