@@ -31,7 +31,7 @@
 					if (!target[key]) {
 						dst[key] = src[key];
 					} else {
-						dst[key] = deepmerge(target[key], src[key]); 
+						dst[key] = deepmerge(target[key], src[key]);
 					}
 				}
 			});
@@ -56,26 +56,23 @@
 	  }, {});
 	}
 	function expression(e, props){
-	  
+
 	  var o = {
-		kind: 'relation',
+		kind: 'edge',
 		name: e[0][0],
 		filters: e.slice(1).reduce(function(o, f){
 		  o[ f[0] ] = f[1];
 		  return o;
 		},{}),
-		props:flat(props) 
-	  }
-	  var id = e[0][1] && e[0][1][0];
-	  if( id ){
-		o.id = id;
+		props:flat(props),
+		args: e[0][1]
 	  }
 	  return o;
 	}
 }
 
 start
-  = c:call ws* { return c }
+  = c:(call*) ws* { return c }
 
 call
   = ws* expr:call_exprs lb props:property_list rb  { return expression(expr, props) }
@@ -90,10 +87,10 @@ call_expr
   = name:$[a-z0-9_]+ args:call_expr_args? { return [name,args] }
 
 call_expr_args
-  = "(" args:(first_arg / arg)* ")" { return args } 
+  = "(" args:(first_arg / arg)* ")" { return args }
 
 first_arg
-  = ws* arg:$arg ws* "," { return arg } 
+  = ws* arg:$arg ws* "," { return arg }
 
 arg
   = quoted_text_arg / text_arg

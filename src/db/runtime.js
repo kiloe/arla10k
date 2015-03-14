@@ -71,8 +71,8 @@ export function define(name, o){
 	if( !o.properties ){
 		o.properties = {};
 	}
-	if( !o.refs ){
-		o.refs = {};
+	if( !o.edges ){
+		o.edges = {};
 	}
 	o.name = name;
 	ddl.push(`CREATE TABLE ${ plv8.quote_ident(name) } ()`);
@@ -84,15 +84,6 @@ export function define(name, o){
 	if( !o.properties.id ){
 		ddl.push(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN id UUID PRIMARY KEY DEFAULT uuid_generate_v4()`);
 		o.properties.id = {type:'uuid'};
-	}
-	for(let k in o.refs){
-		let ref = o.refs[k];
-		if( !ref.hasOne ){
-			continue;
-		}
-		let key = ref.hasOne + '_id';
-		ddl.push(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(key) } ${ col({type: 'uuid', ref: ref.hasOne}) }`);
-		ddl.push(`CREATE INDEX ${ name }_${ key }_idx ON ${ plv8.quote_ident(name) } ( ${ plv8.quote_ident(key) } )`);
 	}
 	if( o.indexes ){
 		for(let k in o.indexes){
@@ -145,42 +136,53 @@ export function defineJoin(tables, o){
 	define(tables.join('_'), o);
 }
 
+var PARENT_MATCH = /\$this/g;
+var VIEWER_MATCH = /\$viewer/g;
 
-function gqlToSql({name, properties, refs}, {id, props, filters}, p, p_key, r = null, i = 0){
-	var t = `t${ i }`;
-	var v = `v${ i }`;
-	var cols = Object.keys(props || {}).map(function(k){
+function gqlToSql(viewer, {name, properties, edges}, {args, props, filters}, parent, i = 0){
+	let cols = Object.keys(props || {}).map(function(k){
 		var o = props[k];
-		if( o.kind == 'property' ){
-			if( properties[k] ){
-				return `${ t }.${ k }`;
-			} else if( r && r.via && schema[r.via].properties[k] ){
-				return `${ v }.${ k }`;
+		switch(o.kind){
+		case 'property':
+			return `${ parent }.${ k }`;
+		case 'edge':
+			let x = `x${ i }`;
+			let q = `q${ i }`;
+			let call = edges[k];
+			if( !call ){
+				throw `no such edge ${k} for ${name}`;
 			}
-			throw "no such column "+k+" for "+name;
+			let edge = call(...o.args);
+			if( !edge.query ){
+				throw `missing query for edge call ${k} on ${name}`;
+			}
+			let sql = edge.query;
+			// Replace special variables
+			sql = sql.replace(VIEWER_MATCH, plv8.quote_literal(viewer));
+			sql = sql.replace(PARENT_MATCH, function(match){
+				if( !parent ){
+					throw "Cannot use $this table replacement on root calls";
+				}
+				return plv8.quote_ident(parent);
+			});
+			let type = edge.type == 'array' ? edge.of : edge.type;
+			let table = schema[type];
+			if( !table ){
+				throw `unknown return type ${type} for edge call ${k} on ${name}`
+			}
+			let jsonfn = edge.type == 'array' ? 'json_agg' : 'row_to_json';
+			return `
+				(with
+					${q} as ( ${ sql } ),
+					${x} as ( ${gqlToSql(viewer, table, o, q, ++i)} from ${q} )
+					select ${jsonfn}(${x}.*) from ${x}
+				) as ${k}
+			`;
+		default:
+			throw `unknown property type: ${o.kind}`
 		}
-		var r2 = refs[k];
-		if( !r2 ){
-			throw "no such edge "+k+" for "+name;
-		}
-		var x = `x${ i }`;
-		return `(with ${x} as ( ${ gqlToSql(schema[r2.hasOne || r2.hasMany], o, t, `${ name }_id`, r2, ++i) }) select json_agg(${x}.*) from ${x} ) as ${ k }`;
 	});
-	var filters = Object.keys(filters || {}).map(function(k){
-		return '';
-	})
-	if( r ){
-		if( r.hasMany ){
-			if( r.via ){
-				return `select ${ cols.join(',') } from ${ name } ${ t } left join ${ r.via } ${ v } on ${ t }.id = ${ v }.${ name }_id where ${ v }.${ p_key } = ${ p }.id`;
-			} else {
-				return `select ${ cols.join(',') } from ${ name } ${ t } where ${ t }.${ p_key } = ${ p }.id`;
-			}
-		} else if( r.hasOne ){
-			return `select ${ cols.join(',') } from ${ name } ${ t } where ${ t }.id = ${ p }.${ name }_id`;
-		}
-	}
-	return `select ${ cols.join(',') } from ${ name } ${ t } where ${ t }.id = ${ plv8.quote_literal(id) }`;
+	return `select ${cols.join(',')}`;
 }
 
 define('meta', {
@@ -236,6 +238,9 @@ export var sql_exports = {
 		return true;
 	},
 	arla_exec(name, args, replay){
+		if( name == 'resolver' ){
+			throw "no such action resolver"; // HACK
+		}
 		var fn = actions[name];
 		if( !fn ){
 			if( /^[a-zA-Z0-9_]+$/.test(name) ){
@@ -251,25 +256,23 @@ export var sql_exports = {
 				throw err;
 			}
 			if( !actions.resolver ){
+				console.log(`There is no 'resolver' function declared`);
 				throw err;
 			}
-			var res = actions.resolver.bind(db)(err, fn, args, actions);
+			var res = actions.resolver.bind(db)(err, name, args, actions);
 			console.debug('action', name, args, 'initially failed, but was resolved')
 			return res;
 		}
 	},
-	arla_query(query){
+	arla_query(viewer, query){
+		query = `root(){ ${query} }`;
 		try{
-			var ast = gql.parse(query);
-			var table = schema[ ast.name ];
-			if( !table ){
-				throw "no relation found named "+ast.name;
-			}
-			console.debug("AST", ast);
-			var sql = gqlToSql( table, ast );
-			console.debug("SQL", sql);
-			var res = {};
-			res[ast.name] = db.query(sql)[0];
+			console.debug("QUERY:", viewer, query);
+			let ast = gql.parse(query);
+			console.debug("AST:", ast);
+			let sql = gqlToSql( viewer, schema.root, ast[0]);
+			console.debug(`SQL:`, sql);
+			let res = db.query(sql)[0];
 			console.debug("RESULT", res);
 			return res;
 		}catch(err){
@@ -278,8 +281,6 @@ export var sql_exports = {
 				console.warn( `${ Array(err.column).join('-') }^` );
 				throw new SyntaxError(`arla_query: line ${err.line}, column ${err.column}: ${err.message}`)
 			}
-			console.warn(ast);
-			console.warn(sql);
 			throw err;
 		}
 	}

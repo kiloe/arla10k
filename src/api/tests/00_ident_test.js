@@ -212,7 +212,7 @@ describe('ident', function(){
 				.post('/auth')
 				.send({ username: u.id, password: 'bad' })
 				.expect('Content-Type', /json/)
-				.expect(400)
+				.expect(403)
 				.expect(function(res){
 						expect(res.body).to.have.property('errors');
 						expect(res.body.errors[0]).to.equal(errors.InvalidPassword);
@@ -226,7 +226,7 @@ describe('ident', function(){
 				.post('/auth')
 				.send({ username: 'bad', password: u.password })
 				.expect('Content-Type', /json/)
-				.expect(400)
+				.expect(403)
 				.expect(function(res){
 						expect(res.body).to.have.property('errors');
 						expect(res.body.errors[0]).to.equal(errors.InvalidUserId);
@@ -329,7 +329,7 @@ describe('ident', function(){
 			request(app)
 				.post('/auth')
 				.send({ username: 'xxx@xxx.com', password: 'bad', as: u.id })
-				.expect(400)
+				.expect(403)
 				.expect(function(res){
 						expect(res.body).to.have.property('errors');
 						expect(res.body.errors[0]).to.equal(errors.InvalidUserId);

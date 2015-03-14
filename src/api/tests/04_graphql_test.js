@@ -11,12 +11,12 @@ describe('graphql', function(){
 
 	before(function(done){
 		var id = uuid.v4();
-		var u ={ 
+		var u ={
 			id: id,
 			first_name: 'user',
 			last_name: id.toString(),
 			email: id+'@test.com',
-			password: 'th1s-1s-4-p4ssword-'+id 
+			password: 'th1s-1s-4-p4ssword-'+id
 		};
 		request(app)
 			.post('/register')
@@ -36,12 +36,12 @@ describe('graphql', function(){
 			.post('/query')
 			.set('Authorization', 'Bearer '+token)
 			.set('Content-Type', 'text/plain')
-			.send("member("+user.id+'){ id }')
+			.send('viewer(){id}')
 			.end(function(err, res){
 				if( err ){
 					return done(err)
 				}
-				expect(res.body).to.deep.equal({ member: { id: user.id } })
+				expect(res.body).to.deep.equal({ viewer: { id: user.id } })
 				done();
 			})
 	})

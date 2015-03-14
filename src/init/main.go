@@ -23,6 +23,7 @@ import (
 )
 
 var testMode = flag.Bool("test", false, "run tests then exit")
+var devMode = flag.Bool("dev", false, "watch the app dir for changes and autoreload")
 
 const (
 	postgresCmd        = "/usr/bin/pg_ctlcluster"
@@ -139,9 +140,17 @@ func start() error {
 		return err
 	}
 
+	// execute tests and exit
 	if *testMode {
 		return runTests()
 	}
+
+	//
+	if *devMode {
+		// watch for changes to action.js or schema.js and reload
+		// run app's npm watch script if it has one
+	}
+
 	// Boot API server
 	apiExit, err := startApiServer()
 	if err != nil {

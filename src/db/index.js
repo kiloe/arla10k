@@ -1,12 +1,12 @@
 import {define, action, sql_exports} from "./runtime";
-import * as actions from "./app/actions";
-import * as schema from "./app/schema";
 
 // register tables from app config
+import * as schema from "./app/schema";
 Object.keys(schema).forEach(function(k){
 	define(k, schema[k]);
 });
 // register actions from app config
+import * as actions from "./app/actions";
 Object.keys(actions).forEach(function(k){
 	action(k, actions[k]);
 });

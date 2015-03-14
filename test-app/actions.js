@@ -6,7 +6,7 @@ from the user's app.
 
 */
 
-export function create_member( id, email ) {
+export function createIdentity( values ) {
 	return this.query(`
 		with m as (
 			insert into member (id) values ($1) returning *
@@ -14,10 +14,10 @@ export function create_member( id, email ) {
 			(member_id, address, is_confirmed)
 			(select m.id, $2, false from m)
 			returning member_id as id;
-	`, id, email)[0].id;
+	`, values.id, values.email)[0].id;
 };
 
-export function find_member( reference ) {
+export function lookupIdentity( reference ) {
 	var r = this.query(`
 		select member_id from member_email where address = lower($1) limit 1
 	`, reference)[0];

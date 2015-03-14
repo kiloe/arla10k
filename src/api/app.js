@@ -221,11 +221,31 @@ module.exports = function(opts){
 		if( /^[0-9a-f]{22}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ){
 			return Promise.resolve(id);
 		}
-		return exec('find_member', [id]).then(function(id){
-			if( !id ){
-				throw errors.InvalidUserId;
+		// Call into the querystore to translate a username/email/whatever -> uuid.
+		// The special action 'lookupIdentity' should be defined and should return a
+		// single row with a single "id" column.
+ 		return exec('lookupIdentity', [id], true).then(function(res){
+			if( !res ){
+				return Promise.reject(errors.InvalidUserId);
 			}
-			return id
+			if( Array.isArray(res) ){
+				if( res.length == 0 ){
+					return Promise.reject(errors.InvalidUserId);
+				}
+				res = res[0]
+			}
+			if( typeof res == 'object' ){
+				var cols = Object.keys(res);
+				if( cols.length == 0 ){
+					console.warn('lookupIdentity returned a row with no columns. HINT: It should return a single row with a single "id" column or just a uuid directly')
+					return Promise.reject(errors.InvalidUserId);
+				}
+				if( cols.length > 1 ){
+					console.warn('lookupIdentity returned a rows with more than one column: HINT: it should return a single row with a single "id" columns or just a uuid directly');
+					res = res[ cols[0] ]
+				}
+			}
+			return res;
 		})
 	}
 
@@ -272,6 +292,7 @@ module.exports = function(opts){
 			return ghost(id, req.body.as)
 		}).then(function(id){
 			res.ok({
+				id: id,
 				access_token: jwt.encode({
 					type: 'access',
 					su: app.su == id,
@@ -289,11 +310,11 @@ module.exports = function(opts){
 		})
 	}
 
-	// Execute an action on the data
+	// Execute an action and record it in the log.
+	// If replay=true then the action will not be recorded in the log.
 	function exec(name, args, replay){
 		return app.query('select arla_exec($1::text, $2::json, $3::boolean) as v', [name, JSON.stringify(args), replay]).then(function(rows){
 			var v = rows && rows.length > 0 ? rows[0].v : null;
-			console.log('v=>', v);
 			var o = [name, args]; // action name, args;
 			return replay ? v : app.wal.put(o).then(function(){
 				return v;
@@ -313,21 +334,14 @@ module.exports = function(opts){
 
 	// Handler for graphql-like queries
 	function queryHandler(req, res){
-		var q = 'member('+req.uid+'){' + req.body + '}';
-		return app.query('select arla_query($1::text) as res', [q]).then(function(rows){
+		return app.query('select arla_query($1::json, $2::text) as res', [JSON.stringify(req.uid), req.body]).then(function(rows){
 			if( rows.length == 0 ){
 				return res.fail('no rows returned');
 			}
 			if( !rows[0].res ){
 				return res.fail('unexpected response from query');
 			}
-			// if nothing at all in the response this likely means
-			// that while we trust the token, it is no longer referring to
-			// a member in the query store
-			if( !rows[0].res.member ){
-				return res.fail(errors.InvalidToken);
-			}
-			res.ok(rows[0].res.member);
+			res.ok(rows[0].res);
 		}).catch(function(err){
 			res.fail(err)
 		});
@@ -340,10 +354,13 @@ module.exports = function(opts){
 			u.id = uuid.v4();
 		}
 		return app.passwd.set(u.id, u.password).then(function(){
+			// create the user's profile by triggering the special
+			// createIdentity action.
 			delete u.password;
-			return exec('create_member', [u])
+			return exec('createIdentity', [u])
 		}).then(function(){
 			res.ok({
+				id: u.id,
 				access_token: jwt.encode({
 					type: 'pending',
 					id: u.id,
@@ -359,6 +376,7 @@ module.exports = function(opts){
 	app.post('/auth', authenticationHandler);
 	app.post('/exec', execHandler);
 	app.post('/query', queryHandler);
+	app.post('')
 
 	return app;
 

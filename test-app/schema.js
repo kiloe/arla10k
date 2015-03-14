@@ -1,6 +1,5 @@
 import db from "../db";
 import assert from "../assert";
-import {define, defineJoin} from "../runtime";
 /*
 
 NOTE: THIS IS JUST AN EXAMPLE APP FOR TESTING!
@@ -8,6 +7,7 @@ During normal usage this "app" directory is overwritten (or bind-mounted)
 from the user's app.
 
 */
+
 
 function constraint(name, fn){
 	try{
@@ -17,19 +17,47 @@ function constraint(name, fn){
 	}
 }
 
-define('member', {
+// The "root" entity is a special psuedo entity decalres the root
+// calls.
+// All queries start here.
+export var root = {
+	edges: {
+		viewer() {
+			return {
+				type: 'member',
+				query: `select * from member where id = $viewer limit 1`
+			}
+		}
+	}
+}
+
+export var member = {
 	properties: {
 		first_name: {type: 'text',      def: "''"},
 		last_name:  {type: 'text',      def: "''" },
-		is_su:      {type: 'boolean',   def: 'false' }
+		is_su:      {type: 'boolean',   def: 'false' },
 	},
-	refs: {
-		email_addresses: {
-			hasMany: 'member_email'
+	edges: {
+		email_addresses() {
+			return {
+				type: 'array',
+				of: 'email_address',
+				query: `
+					select * from email_address
+					where email_address.member_id = $id`
+				,
+			}
 		},
-		orgs: {
-			hasMany: 'org',
-			via: 'org_member'
+		orgs() {
+			return {
+				type: 'array',
+				of: 'org',
+				query: `
+					select org.* from org_member
+					left join org on org_member.org_id = org.id
+					where org_member.member_id = $this.id
+				`
+			}
 		},
 	},
 	beforeChange( r ) {
@@ -55,16 +83,22 @@ define('member', {
 			is_admin: true,
 		} )[0];
 	}
-})
+}
 
-define('member_email', {
+export var member_email = {
 	properties: {
+		member_id: {type: 'uuid', ref:'member'},
 		address: { type: 'text', unique: true },
 		is_confirmed: { type: 'boolean' },
 	},
-	refs: {
-		member: {
-			hasOne: 'member'
+	edges: {
+		member() {
+			return {
+				type: 'member',
+				query: [`
+					select * from member where id = $1
+				`, this.member_id]
+			}
 		},
 	},
 	beforeInsert( r ) {
@@ -118,18 +152,26 @@ define('member_email', {
 			db.count( 'select * from member_email WHERE member_id = $1', r.member_id ) > 0,
 		'action would have left member without an email address' );
 	},
-});
+};
 
-define('org', {
+export var org = {
 	properties: {
 		name: { type: 'text' },
-		domain: { type: 'text', nullable: true, def: null },
+		domain: { type: 'text', index:true, nullable: true, def: null },
 		is_company: { type: 'boolean' },
 	},
-	refs: {
-		members: {
-			hasMany: 'member',
-			via: 'org_member'
+	edges: {
+		members() {
+			return {
+				type: 'array',
+				of: 'member',
+				query: `
+					select member.*
+					from org_member
+					left join member on member.id = org_member.member_id
+					where org_member.org_id = $this.id
+				`
+			}
 		},
 	},
 	indexes: {
@@ -148,79 +190,87 @@ define('org', {
 			}
 		} )
 	},
-});
+};
 
-defineJoin([ 'org', 'member' ], {
+export var org_member = {
 	properties: {
+		org_id: {type: 'uuid', ref:'org'},
+		member_id: {type: 'uuid', ref:'member'},
 		is_admin: { type: 'boolean' },
 		is_confirmed: { type: 'boolean' },
 	}
-} );
+};
 
-define( 'team', {
+export var team = {
 	properties: {
 		name: { type: 'text' },
 	},
-} );
+};
 
-defineJoin( [ 'team', 'member' ], {
+export var team_member = {
 	properties: {
+		team_id: {type: 'uuid', ref:'team'},
+		member_id: {type: 'uuid', ref:'member'},
 		is_admin: { type: 'text' },
 	}
-} );
+};
 
-define( 'client', {
+export var client = {
 	properties: {
 		first_name: { type: 'text' },
 		last_name: { type: 'text' },
 	},
-} );
+};
 
-define( 'issue', {
+export var issue = {
 	properties: {
 		name: { type: 'text' },
 	},
-} );
+};
 
-define( 'exercise', {
+export var exercise = {
 	properties: {
 		name: { type: 'text' },
 	},
-} );
+};
 
-define( 'case', {
+export var client_case = {
 	properties: {
 		client_id: { type: 'uuid', ref: 'client' },
 		org_id: { type: 'uuid', ref: 'org' },
 		issue_id: { type: 'uuid', ref: 'issue' },
 	}
-} );
+};
 
-defineJoin( [ 'case', 'member' ], {
+export var case_member = {
 	properties: {
 		is_admin: { type: 'boolean' },
 	}
-} );
+};
 
-defineJoin( [ 'case', 'team' ] );
-
-define( 'course', {
+export var case_team = {
 	properties: {
-		case_id: { type: 'uuid', ref: 'case' },
+		case_id: {type: 'uuid', ref: 'client_case'},
+		team_id: {type: 'uuid', ref: 'team'}
+	}
+};
+
+export var course = {
+	properties: {
+		case_id: { type: 'uuid', ref: 'client_case' },
 		name: { type: 'text' },
-
 	},
-} );
+};
 
-define( 'assignment', {
+export var assignment = {
 	properties: {
 		course_id: { type: 'uuid', ref: 'course' },
 		name: { type: 'text' },
 		due_at: { type: 'timestamptz' },
 	},
-} );
+};
 
-define( 'task', {
+export var task = {
 	properties: {
 		assignment_id: { type: 'uuid', ref: 'assignment' },
 		execise_id: { type: 'uuid', ref: 'exercise', nullable: true },
@@ -228,9 +278,9 @@ define( 'task', {
 		is_complete: { type: 'boolean', nullable: true, def: null },
 		instruments: { type: 'json' },
 	},
-} );
+};
 
-define('data', {
+export var data = {
 	properties: {
 		created_at: {type: 'timestamptz', def:'now()'},
 		task_id: { type: 'uuid', ref: 'task' },
@@ -241,4 +291,4 @@ define('data', {
 			on: [ 'created_at' ]
 		}
 	}
-} );
+};

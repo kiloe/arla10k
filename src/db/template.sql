@@ -41,8 +41,8 @@ CREATE OR REPLACE FUNCTION arla_exec(name text, args json, replay boolean) RETUR
 $$ LANGUAGE "plv8";
 
 -- use graphql to execute a query
-CREATE OR REPLACE FUNCTION arla_query(t text) RETURNS json AS $$
-	return JSON.stringify(plv8.functions.arla_query(t));
+CREATE OR REPLACE FUNCTION arla_query(viewer json, t text) RETURNS json AS $$
+	return JSON.stringify(plv8.functions.arla_query(viewer, t));
 $$ LANGUAGE "plv8";
 
 -- wipe all the data
