@@ -11,7 +11,7 @@ build:
 
 test: build
 	docker run -it \
-		--rm -p 3000:3000 \
+		--rm -p 3001:3001 \
 		--name arla_test \
 		-v $(PWD)/test-app:/var/lib/arla/app \
 		-e AUTH_SECRET=testing \
