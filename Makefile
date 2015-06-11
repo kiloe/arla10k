@@ -11,7 +11,7 @@ build:
 
 test: build
 	docker run -it \
-		--rm -p 3001:3001 \
+		-p 3001:3001 \
 		--name arla_test \
 		-v $(PWD)/test-app:/var/lib/arla/app \
 		-e AUTH_SECRET=testing \
@@ -23,6 +23,5 @@ release: test
 
 clean:
 	docker rm  arla_test || echo 'ok'
-	docker rmi arla || echo 'ok'
 
 .PHONY: default build test release clean enter
