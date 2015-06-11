@@ -80,6 +80,7 @@ describe('ident', function(){
 					email: 'bob@bob.com',
 					password: ''
 				})
+				.expect(400)
 				.expect('Content-Type', /json/)
 				.expect(function(res){
 					expect(res.body).to.have.property('errors')
@@ -429,6 +430,7 @@ describe('ident', function(){
 						request(app)
 						.post('/auth')
 						.send({ username: u.id, password: 'badpassword' })
+						.expect(400)
 						.expect(function(res){
 							expect(res.body).to.have.property('errors');
 							expect(res.body.errors[0]).to.equal(errors.InvalidPassword);
@@ -443,6 +445,7 @@ describe('ident', function(){
 					request(app)
 						.post('/auth')
 						.send({ username: u.id, password: 'badpassword' })
+						.expect(400)
 						.expect(function(res){
 							expect(res.body).to.have.property('errors');
 							expect(res.body.errors[0]).to.equal(errors.LockedUserId);
@@ -452,6 +455,7 @@ describe('ident', function(){
 				request(app)
 					.post('/auth')
 					.send({ username: u.id, password: u.password })
+					.expect(400)
 					.expect(function(res){
 						expect(res.body).to.have.property('errors');
 						expect(res.body.errors[0]).to.equal(errors.LockedUserId);
