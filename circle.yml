@@ -1,0 +1,12 @@
+machine:
+	services:
+		- docker
+dependencies:
+	pre:
+		- sudo apt-get install build-essential
+	override:
+		- docker info
+		- docker
+test:
+	override:
+		- make test
