@@ -1,10 +1,12 @@
 FROM ubuntu:14.10
 
+# Set lang (used when initializing postgres)
+ENV LANGUAGE="en_GB.UTF-8"
+ENV LANG="en_GB.UTF-8"
+ENV LC_ALL="en_GB.UTF-8"
+
 # install dev dependencies
 RUN apt-get update && apt-get install -y golang make
-
-# set locale
-RUN echo 'LANG="en_GB.UTF-8"' > /etc/default/locale && locale-gen en_GB.UTF-8 && dpkg-reconfigure locales
 
 # install postgres plus work around for AUFS bug
 # as per https://github.com/docker/docker/issues/783#issuecomment-56013588
