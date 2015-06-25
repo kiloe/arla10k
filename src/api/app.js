@@ -19,7 +19,7 @@ module.exports = function(opts){
 
 	// Default datadir
 	if( !opts.dataDir ){
-		opts.dataDir = process.env.APP_DATA || '/var/lib/arla/data';
+		opts.dataDir = process.env.APP_DATA || '/var/state';
 	}
 
 	// Set the secret that will be used for auth tokens

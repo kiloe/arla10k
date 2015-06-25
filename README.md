@@ -1,3 +1,4 @@
+[![Circle CI](https://circleci.com/gh/kiloe/arla10k/tree/master.svg?style=svg)](https://circleci.com/gh/kiloe/arla10k/tree/master)
 
 ## What is Arla10k?
 
