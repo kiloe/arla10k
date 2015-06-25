@@ -34,7 +34,7 @@ module.exports = function(opts){
 	var app =  express();
 
 	// port to listen on
-	app.port = opts.port || 3000;
+	app.port = opts.port || 80;
 
 	// static assets path
 	app.assetPath = opts.assetPath || process.env.APP_PATH || "/var/lib/arla/app/public"

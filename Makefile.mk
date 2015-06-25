@@ -35,7 +35,7 @@ install: build
 	cp src/db/pg_hba.conf /etc/postgresql/9.4/main/
 	cp src/db/postgresql.conf /etc/postgresql/9.4/main/
 	npm install --global ./src/api
-	mkdir -p /var/lib/arla/data
+	mkdir -p /var/state
 
 clean:
 	rm -rf ./dist
