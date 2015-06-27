@@ -35,6 +35,7 @@ install: build
 	cp src/db/pg_hba.conf /etc/postgresql/9.4/main/
 	cp src/db/postgresql.conf /etc/postgresql/9.4/main/
 	npm install --global ./src/api
+	cp -r src/client-builder /usr/local/bin
 	mkdir -p /var/state
 
 clean:

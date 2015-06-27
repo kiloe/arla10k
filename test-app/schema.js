@@ -25,7 +25,7 @@ export var root = {
 		viewer() {
 			return {
 				type: 'member',
-				query: `select * from member where id = $viewer limit 1`
+				query: `select * from member where id = $identity limit 1`
 			}
 		}
 	}
