@@ -124,11 +124,10 @@ module.exports = function(opts){
 		return new Promise(function(resolve, reject){
 			pg.connect(app.conString, function(err, db, done){
 				if( err ){
-					done(db);
 					return reject(err);
 				}
 				db.query(sql, args, function(err, result){
-					done(db);
+					done();
 					if( err ){
 						return reject(err);
 					}
