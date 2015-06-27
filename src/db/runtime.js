@@ -142,7 +142,7 @@ export function defineJoin(tables, o){
 }
 
 var PARENT_MATCH = /\$this/g;
-var VIEWER_MATCH = /\$viewer/g;
+var VIEWER_MATCH = /\$identity/g;
 
 function gqlToSql(viewer, {name, properties, edges}, {args, props, filters}, parent, i = 0){
 	let cols = Object.keys(props || {}).map(function(k){
@@ -261,13 +261,21 @@ export var sql_exports = {
 			}
 		}
 		try{
-			return fn(...args);
+			var queryArgs = fn(...args);
+			if( !queryArgs ){
+				console.debug(`action ${name} was a noop`);
+				return [];
+			}
+			if( !Array.isArray(queryArgs) ){
+				queryArgs = [queryArgs];
+			}
+			return db.query(...queryArgs);
 		}catch(err){
 			if( !replay ){
 				throw err;
 			}
 			if( !actions.resolver ){
-				console.log(`There is no 'resolver' function declared`);
+				console.debug(`There is no 'resolver' function declared`);
 				throw err;
 			}
 			var res = actions.resolver.bind(db)(err, name, args, actions);
@@ -280,9 +288,9 @@ export var sql_exports = {
 		try{
 			console.debug("QUERY:", viewer, query);
 			let ast = gql.parse(query);
-			console.debug("AST:", ast);
+			//console.debug("AST:", ast);
 			let sql = gqlToSql( viewer, schema.root, ast[0]);
-			console.debug(`SQL:`, sql);
+			//console.debug(`SQL:`, sql);
 			let res = db.query(sql)[0];
 			console.debug("RESULT", res);
 			return res;
