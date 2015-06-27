@@ -1,0 +1,22 @@
+#!/bin/bash
+
+set -e
+
+function compile() {
+  ./node_modules/.bin/browserify --modules common -t babelify "$@"
+}
+
+cd /usr/local/bin/client-builder
+
+# get list of actions
+cp "${1}" ./actions.js
+compile ./dumpactions.in.js -o ./dumpactions.js
+node ./dumpactions.js > actions.tmp
+rm dumpactions.js actions.js
+
+# insert actions into datastore lib
+sed -e "/__ACTIONS_LIST__/ {" -e "r actions.tmp" -e "d" -e "}" datastore.in.js > datastore.js
+rm actions.tmp
+# dump to stdout
+cat datastore.js
+rm datastore.js
