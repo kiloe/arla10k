@@ -24,6 +24,7 @@ import (
 
 var testMode = flag.Bool("test", false, "run tests then exit")
 var devMode = flag.Bool("dev", false, "watch the app dir for changes and autoreload")
+var generateClient = flag.Bool("generate-client", false, "generate arla-client javascript module")
 
 const (
 	postgresCmd        = "/usr/bin/pg_ctlcluster"
@@ -33,6 +34,7 @@ const (
 	postgresInitScript = "/var/lib/arla/bin/initdb"
 	arlaServerCmd      = "/usr/local/bin/arla_server"
 	arlaTestCmd        = "/usr/local/bin/arla_tests"
+	arlaGenerateClientCmd        = "/usr/local/bin/client-builder/client-builder"
 	libdir             = "/var/lib/arla/"
 )
 
@@ -129,8 +131,20 @@ func runTests() (err error) {
 	return cmd.Run()
 }
 
+func runGenerateClient() (err error) {
+	cmd := exec.Command(arlaGenerateClientCmd, "/var/lib/arla/app/actions.js")
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	cmd.Env = env
+	return cmd.Run()
+}
+
 // start launches init
 func start() error {
+	// cmds
+	if *generateClient {
+		return runGenerateClient()
+	}
 	// Listen for signals send to this process so they can be forwarded on
 	signal.Notify(signals, syscall.SIGHUP, syscall.SIGKILL, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
