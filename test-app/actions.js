@@ -22,3 +22,8 @@ export function lookupIdentity( reference ) {
 		select member_id from member_email where address = lower($1) limit 1
 	`, reference];
 };
+
+
+export function exampleOp( a, b, c ) {
+	return [`select $1,$2,$3`, a, b, c];
+};

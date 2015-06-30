@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 	// user1
 	user1 = &schema.User{
 		Name:    "admin",
-		ID:      "f3817582-1f2d-11e5-a248-0242ac110001", //v1id
+		ID:      schema.TimeUUID(),
 		Aliases: []string{"admin", "administrator", "su", "superuser", "god"},
 	}
 	if err := user1.SetPassword("test1"); err != nil {
@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 	// user2
 	user2 = &schema.User{
 		Name:    "jeff",
-		ID:      "954ce7dd-d936-42ec-a247-55cefda1a9f9", // v4id
+		ID:      schema.MustRandomUUID(),
 		Aliases: []string{"jeff", "jeff@jeff.com"},
 	}
 	if err := user1.SetPassword("test1"); err != nil {
@@ -62,7 +62,7 @@ func TestGetById(t *testing.T) {
 		t.Fatal("put ", err)
 	}
 	// get user1 by id
-	res := s.Get(string(user1.ID))
+	res := s.Get(user1.ID)
 	if res == nil {
 		t.Fatal("expected to fetch user1 from store using ID got nil")
 	}
@@ -70,7 +70,7 @@ func TestGetById(t *testing.T) {
 		t.Fatal("expected to fetch user1 from store using ID got incorrect ID")
 	}
 	// get user2 by id
-	res = s.Get(string(user2.ID))
+	res = s.Get(user2.ID)
 	if res == nil {
 		t.Fatal("expected to fetch user2 from store using ID got nil")
 	}
@@ -93,7 +93,7 @@ func TestGetByAlias(t *testing.T) {
 		t.Fatal("put ", err)
 	}
 	// fetch user1 by alias
-	res := s.Get("administrator")
+	res := s.Find("administrator")
 	if res == nil {
 		t.Fatal("expected to fetch user1 from store using alias got nil")
 	}
@@ -101,7 +101,7 @@ func TestGetByAlias(t *testing.T) {
 		t.Fatal("expected to fetch user1 from store using alias got incorrect ID")
 	}
 	// fetch user2 by alias
-	res = s.Get("jeff@jeff.com")
+	res = s.Find("jeff@jeff.com")
 	if res == nil {
 		t.Fatal("expected to fetch user2 from store using alias got nil")
 	}
@@ -129,7 +129,7 @@ func TestReopen(t *testing.T) {
 		t.Fatal("open ", err)
 	}
 	// fetch user1 by alias
-	res := s.Get("administrator")
+	res := s.Find("administrator")
 	if res == nil {
 		t.Fatal("expected to fetch user1 from store using alias got nil")
 	}
@@ -137,7 +137,7 @@ func TestReopen(t *testing.T) {
 		t.Fatal("expected to fetch user1 from store using alias got incorrect ID")
 	}
 	// fetch user2 by alias
-	res = s.Get("jeff@jeff.com")
+	res = s.Find("jeff@jeff.com")
 	if res == nil {
 		t.Fatal("expected to fetch user2 from store using alias got nil")
 	}
@@ -164,7 +164,7 @@ func TestUpdateUser(t *testing.T) {
 		t.Fatal("put ", err)
 	}
 	// fetch newman by old alias
-	res := s.Get("admin")
+	res := s.Find("admin")
 	if res != nil {
 		t.Fatal("expected to fetching newman by he's old alias to fail but it did not")
 	}
@@ -177,8 +177,9 @@ func TestPutInvalidId(t *testing.T) {
 		t.Fatal("open ", err)
 	}
 	// write user
+	id, _ := schema.ParseUUID("")
 	newman := &schema.User{
-		ID:   "",
+		ID:   id,
 		Name: "newman",
 	}
 	if err := s.Put(newman); err == nil {
@@ -197,7 +198,7 @@ func TestPassword(t *testing.T) {
 		t.Fatal("put ", err)
 	}
 	// fetch by id
-	res := s.Get(string(user1.ID))
+	res := s.Get(user1.ID)
 	// check password still matches
 	if !res.MatchPassword("test1") {
 		t.Fatal("expected user1 password to match")
@@ -219,8 +220,32 @@ func TestPassword(t *testing.T) {
 		t.Fatal("put ", err)
 	}
 	// now it should be updated
-	if res2 := s.Get(string(user1.ID)); !res2.MatchPassword("newpass") {
+	if res2 := s.Get(user1.ID); !res2.MatchPassword("newpass") {
 		t.Fatal("expected password to be updated after")
 	}
 
+}
+
+func TestClashingAlias(t *testing.T) {
+	filename := filepath.Join(tmpdir, "TestClashingAlias")
+	s, err := Open(filename)
+	if err != nil {
+		t.Fatal("open ", err)
+	}
+	alias := "monkeychops"
+	// write two users with unique ids but same alias
+	a := &schema.User{
+		ID:      schema.MustRandomUUID(),
+		Aliases: []string{alias},
+	}
+	b := &schema.User{
+		ID:      schema.MustRandomUUID(),
+		Aliases: []string{alias},
+	}
+	if err := s.Put(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Put(b); err == nil {
+		t.Fatal("expected adding a user with clashing alias to fail")
+	}
 }

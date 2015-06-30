@@ -3,7 +3,10 @@ package querystore
 import (
 	"arla/schema"
 	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -13,10 +16,46 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"code.google.com/p/go-uuid/uuid"
 )
 import "github.com/jackc/pgx"
+
+func init() {
+	pgx.DefaultTypeFormats["json"] = pgx.BinaryFormatCode
+}
+
+type jsonbytes struct {
+	w io.Writer
+}
+
+func (jb *jsonbytes) Scan(vr *pgx.ValueReader) error {
+	if vr.Type().DataTypeName != "json" {
+		return pgx.SerializationError(fmt.Sprintf("jsonstream.Scan cannot decode %s (OID %d)", vr.Type().DataTypeName, vr.Type().DataType))
+	}
+	// ensure binary
+	switch vr.Type().FormatCode {
+	case pgx.TextFormatCode:
+		return errors.New("jsonstream text format not implemented")
+	case pgx.BinaryFormatCode:
+		chunk := 8
+		for {
+			n := vr.Len()
+			if n <= 0 {
+				break
+			}
+			b := vr.ReadBytes(int32(chunk))
+			sent, err := jb.w.Write(b)
+			if err != nil {
+				return err
+			}
+			if sent != len(b) {
+				return errors.New("number of bytes written does not match")
+			}
+		}
+	default:
+		return fmt.Errorf("jsonstream: unknown format %v", vr.Type().FormatCode)
+	}
+	return vr.Err()
+}
 
 // postgres implements querystore.Engine using postgresql
 type postgres struct {
@@ -30,31 +69,38 @@ type postgres struct {
 	cfg   *Config
 	pgcfg pgx.ConnConfig
 	// block/unblock Start
+	cmd  *exec.Cmd
 	quit chan (error)
 }
 
 // Stop disconnects and shutsdown the queryengine
 func (p *postgres) Stop() error {
-	if p.quit != nil {
-		p.quit <- nil
-		p.quit = nil
-	}
-	return nil
+	return p.cmd.Process.Kill()
 }
 
 // Mutate applies a schema.Mutation to the data
 func (p *postgres) Mutate(m *schema.Mutation) error {
+	if !m.UserID.Valid() {
+		return fmt.Errorf("cannot process mutation without user id")
+	}
 	p.execMu.Lock()
 	defer p.execMu.Unlock()
-	_, err := p.execConn.Exec("select arla_exec($1::text, $2::json)", m.Name, m.Args)
+	args, err := json.Marshal(m.Args)
+	if err != nil {
+		return err
+	}
+	_, err = p.execConn.Exec("select arla_exec($1::uuid, $2::text, $3::json)", m.UserID, m.Name, string(args))
 	return err
 }
 
-// Query executes an Arla query and returns the response as JSON
-// encoded bytes.
-func (p *postgres) Query(uid uuid.UUID, query string) (json []byte, err error) {
-	p.queryPool.Query("select arla_query($1::uuid, $2::text)", uid, query)
-	return
+// Query executes an Arla query and writes the JSON response into w
+func (p *postgres) Query(uid schema.UUID, query string, w io.Writer) error {
+	out := &jsonbytes{w: w}
+	r := p.queryPool.QueryRow("select arla_query($1::uuid, $2::text)", uid, query)
+	if err := r.Scan(&out); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Start spawns a postgres instance, configures it using the
@@ -82,27 +128,30 @@ func (p *postgres) Start() (err error) {
 	if err != nil {
 		return
 	}
+	return nil
+}
+
+func (p *postgres) Wait() error {
 	return <-p.quit
 }
 
-func (p *postgres) spawn() error {
-	cmd, err := p.command("pg_ctlcluster", "--foreground", "9.4", "main", "start")
+func (p *postgres) spawn() (err error) {
+	p.cmd, err = p.command("pg_ctlcluster", "--foreground", "9.4", "main", "start")
 	if err != nil {
 		return err
 	}
-	if err := cmd.Start(); err != nil {
+	if err := p.cmd.Start(); err != nil {
 		return err
 	}
 	go func() {
-		cmd.Wait()
-		log.Println("onExit: postgres daemon exited")
-		p.Stop()
+		p.quit <- p.cmd.Wait()
 	}()
 	// wait until responsive
 	select {
 	case <-p.pollForReady():
 		break
-	case <-time.After(30 * time.Second):
+	case <-time.After(10 * time.Second):
+		p.Stop()
 		return errors.New("timeout waiting for postgres to start accepting connections")
 	}
 	// init
@@ -174,6 +223,7 @@ func (p *postgres) pollForReady() <-chan (bool) {
 
 // initialize the database
 func (p *postgres) init() error {
+	p.run("dropdb", "arla")
 	if err := p.run("createdb"); err != nil {
 		return err
 	}

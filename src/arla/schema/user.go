@@ -1,18 +1,12 @@
 package schema
 
-import "code.google.com/p/go.crypto/bcrypt"
-
-// UserID is the unique id type used for ident services
-type UserID ID
-
-// Valid returns true if the ID is safe to use
-func (id UserID) Valid() bool {
-	return id != ""
-}
+import (
+	"code.google.com/p/go.crypto/bcrypt"
+)
 
 // User is a registered person with access to query arla
 type User struct {
-	ID      UserID
+	ID      UUID
 	Name    string
 	Aliases []string
 	Roles   []string

@@ -84,7 +84,7 @@ call_expr_parent
   = p:call_expr "." { return p }
 
 call_expr
-  = name:$[a-z0-9_]+ args:call_expr_args? { return [name,args] }
+  = name:$[a-zA-Z0-9_]+ args:call_expr_args? { return [name,args] }
 
 call_expr_args
   = "(" args:(first_arg / arg)* ")" { return args }
@@ -99,7 +99,7 @@ quoted_text_arg
   = "'" a:text_arg "'" { return a }
 
 text_arg
-  = a:$[a-z0-9!=>\-< \t]+ { return a.trim() }
+  = a:$[a-zA-Z0-9!=>\-< \t]+ { return a.trim() }
 
 property_list
   = p:(property_list_item*) { return p }
@@ -111,7 +111,7 @@ property
   = p:(call / name) comma {return p}
 
 name
-  = ws* name:$[a-z_0-9]+ { return {kind: 'property', name: name} }
+  = ws* name:$[a-zA-Z_0-9]+ { return {kind: 'property', name: name} }
 
 comma
   = ws* ("," / ws*)

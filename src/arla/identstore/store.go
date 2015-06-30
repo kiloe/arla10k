@@ -16,20 +16,22 @@ type Store interface {
 	// Store a user
 	Put(u *schema.User) error
 	// Get a user for a given uuid or alias. returns nil if not found
-	Get(alias string) *schema.User
+	Get(id schema.UUID) *schema.User
+	// Find a user for a given alias. returns nil if not found
+	Find(alias string) *schema.User
 }
 
 // jsonfile implements Store using a flat json file
 type jsonstore struct {
 	filename string
 	mu       sync.Mutex
-	data     map[schema.UserID]*schema.User
+	data     map[string]*schema.User
 }
 
 // not safe to call without lock
 func (s *jsonstore) load() error {
 	// Parse existing file
-	data := make(map[schema.UserID]*schema.User)
+	data := make(map[string]*schema.User)
 	f, err := os.OpenFile(s.filename, os.O_RDONLY, 0660)
 	if err != nil {
 		return err
@@ -67,7 +69,7 @@ func (s *jsonstore) Put(u *schema.User) error {
 	}
 	// Check aliases don't conflict
 	for _, alt := range u.Aliases {
-		u2 := s.Get(alt)
+		u2 := s.Find(alt)
 		if u2 == nil {
 			continue
 		}
@@ -77,16 +79,24 @@ func (s *jsonstore) Put(u *schema.User) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.data[u.ID] = u
+	s.data[u.ID.String()] = u
 	return s.save()
 }
 
-// Find a user in the store. Alias can be a uuid or one of the aliases
+// Get by Id
+func (s *jsonstore) Get(id schema.UUID) *schema.User {
+	return s.data[id.String()]
+}
+
+// Find a user in the store. Alias can be a uuid string or one of the aliases
 // assigned to the user.
-func (s *jsonstore) Get(alias string) *schema.User {
-	u, ok := s.data[schema.UserID(alias)]
-	if ok {
-		return u
+func (s *jsonstore) Find(alias string) *schema.User {
+	id, err := schema.ParseUUID(alias)
+	if err == nil && id.Valid() {
+		u, ok := s.data[id.String()]
+		if ok {
+			return u
+		}
 	}
 	for _, u := range s.data {
 		for _, alt := range u.Aliases {
@@ -116,7 +126,7 @@ func Open(filename string) (Store, error) {
 			return nil, err
 		}
 		defer f.Close()
-		s.data = make(map[schema.UserID]*schema.User)
+		s.data = make(map[string]*schema.User)
 		if err := s.save(); err != nil {
 			return nil, err
 		}

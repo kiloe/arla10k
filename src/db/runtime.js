@@ -173,12 +173,20 @@ function gqlToSql(viewer, {name, properties, edges}, {args, props, filters}, par
 				}
 				return plv8.quote_ident(parent);
 			});
-			let type = edge.type == 'array' ? edge.of : edge.type;
+			let jsonfn = edge.type == 'array' ? 'json_agg' : 'row_to_json';
+			let type = (edge.type == 'array' ? edge.of : edge.type) || 'raw';
+			if( type == 'raw' ){
+				return `
+					(with
+						${q} as ( ${ sql } )
+						select ${jsonfn}(${q}.*) from ${q}
+					) as ${k}
+				`;
+			}
 			let table = schema[type];
 			if( !table ){
 				throw `unknown return type ${type} for edge call ${k} on ${name}`
 			}
-			let jsonfn = edge.type == 'array' ? 'json_agg' : 'row_to_json';
 			return `
 				(with
 					${q} as ( ${ sql } ),
@@ -241,7 +249,7 @@ export var sql_exports = {
 		}
 		return true;
 	},
-	arla_exec(name, args, replay){
+	arla_exec(viewer, name, args, replay){
 		if( name == 'resolver' ){
 			throw "no such action resolver"; // HACK
 		}
@@ -254,14 +262,23 @@ export var sql_exports = {
 			}
 		}
 		try{
+			console.log(`action ${name} given ${JSON.stringify(args)}`);
 			var queryArgs = fn(...args);
 			if( !queryArgs ){
 				console.debug(`action ${name} was a noop`);
 				return [];
 			}
+			console.log(`action ${name} returned ${JSON.stringify(queryArgs)}`);
 			if( !Array.isArray(queryArgs) ){
 				queryArgs = [queryArgs];
 			}
+			// ensure first arg is valid
+			if( typeof queryArgs[0] != 'string' ){
+				throw 'invalid response from action. should be: [sqlstring, ...args]';
+			}
+			// replace magic $viewer variable
+			queryArgs[0] = queryArgs[0].replace(VIEWER_MATCH, plv8.quote_literal(viewer));
+			// run
 			return db.query(...queryArgs);
 		}catch(err){
 			if( !replay ){

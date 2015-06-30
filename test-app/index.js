@@ -4,5 +4,6 @@ import * as schema from "./schema";
 arla.configure({
   engine: 'postgres',
   actions: actions,
-  schema: schema
+  schema: schema,
+  
 });

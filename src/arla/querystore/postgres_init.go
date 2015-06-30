@@ -38,15 +38,15 @@ CREATE OR REPLACE FUNCTION arla_migrate() RETURNS json AS $$
 $$ LANGUAGE "plv8";
 
 -- execute an action
-CREATE OR REPLACE FUNCTION arla_exec(name text, args json) RETURNS json AS $$
-	return JSON.stringify(plv8.functions.arla_exec(name, args, false));
+CREATE OR REPLACE FUNCTION arla_exec(viewer uuid, name text, args json) RETURNS json AS $$
+	return JSON.stringify(plv8.functions.arla_exec(viewer, name, args, false));
 $$ LANGUAGE "plv8";
-CREATE OR REPLACE FUNCTION arla_exec(name text, args json, replay boolean) RETURNS json AS $$
-	return JSON.stringify(plv8.functions.arla_exec(name, args, replay));
+CREATE OR REPLACE FUNCTION arla_exec(viewer uuid, name text, args json, replay boolean) RETURNS json AS $$
+	return JSON.stringify(plv8.functions.arla_exec(viewer, name, args, replay));
 $$ LANGUAGE "plv8";
 
 -- use graphql to execute a query
-CREATE OR REPLACE FUNCTION arla_query(viewer json, t text) RETURNS json AS $$
+CREATE OR REPLACE FUNCTION arla_query(viewer uuid, t text) RETURNS json AS $$
 	return JSON.stringify(plv8.functions.arla_query(viewer, t));
 $$ LANGUAGE "plv8";
 

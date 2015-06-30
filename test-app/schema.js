@@ -25,6 +25,15 @@ export var root = {
 				type: 'member',
 				query: `select * from member where id = $identity limit 1`
 			}
+		},
+		// The 'raw' type (default if ommited) lets you create arbitary sql responses
+		oneToTen() {
+			return {
+				query: `
+					select array_agg(a) as numbers
+					from generate_series(1,10) a
+				`
+			}
 		}
 	}
 }

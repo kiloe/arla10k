@@ -2,16 +2,16 @@ package querystore
 
 import (
 	"arla/schema"
-
-	"code.google.com/p/go-uuid/uuid"
+	"io"
 )
 
 // Engine interface defines the methods required by a query store
 type Engine interface {
 	Start() error
 	Stop() error
+	Wait() error
 	Mutate(*schema.Mutation) error
-	Query(id uuid.UUID, q string) ([]byte, error)
+	Query(id schema.UUID, q string, w io.Writer) error
 }
 
 // Config defines options configuring the query engine
