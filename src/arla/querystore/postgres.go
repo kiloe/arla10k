@@ -23,10 +23,12 @@ func init() {
 	pgx.DefaultTypeFormats["json"] = pgx.BinaryFormatCode
 }
 
+// jsonbytes is directly writes the response of a ::json type to it's io.Writer
 type jsonbytes struct {
 	w io.Writer
 }
 
+// Scan implements pgx.Scanner
 func (jb *jsonbytes) Scan(vr *pgx.ValueReader) error {
 	if vr.Type().DataTypeName != "json" {
 		return pgx.SerializationError(fmt.Sprintf("jsonstream.Scan cannot decode %s (OID %d)", vr.Type().DataTypeName, vr.Type().DataType))
@@ -36,13 +38,16 @@ func (jb *jsonbytes) Scan(vr *pgx.ValueReader) error {
 	case pgx.TextFormatCode:
 		return errors.New("jsonstream text format not implemented")
 	case pgx.BinaryFormatCode:
-		chunk := 8
+		chunk := int32(8192)
 		for {
 			n := vr.Len()
 			if n <= 0 {
 				break
 			}
-			b := vr.ReadBytes(int32(chunk))
+			if n < chunk {
+				chunk = n
+			}
+			b := vr.ReadBytes(chunk)
 			sent, err := jb.w.Write(b)
 			if err != nil {
 				return err
@@ -95,7 +100,7 @@ func (p *postgres) Mutate(m *schema.Mutation) error {
 
 // Query executes an Arla query and writes the JSON response into w
 func (p *postgres) Query(uid schema.UUID, query string, w io.Writer) error {
-	out := &jsonbytes{w: w}
+	out := jsonbytes{w: w}
 	r := p.queryPool.QueryRow("select arla_query($1::uuid, $2::text)", uid, query)
 	if err := r.Scan(&out); err != nil {
 		return err

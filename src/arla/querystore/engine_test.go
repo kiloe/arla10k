@@ -3,6 +3,7 @@ package querystore
 import (
 	"arla/schema"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -45,12 +46,23 @@ func TestQuery(t *testing.T) {
 	var buf bytes.Buffer
 	err := qs.Query(id, `
     oneToTen() {
-		
+
 		}
   `, &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("buf-->", buf.String())
+	res := struct {
+		OneToTen struct {
+			Numbers []int
+		}
+	}{}
 
+	dec := json.NewDecoder(&buf)
+	if err := dec.Decode(&res); err != nil {
+		t.Fatal(err)
+	}
+	if len(res.OneToTen.Numbers) != 10 {
+		t.Fatal("expected oneToTen() to return an object with property numbers containing an array of 10 numbers")
+	}
 }
