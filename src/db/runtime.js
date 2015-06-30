@@ -193,13 +193,6 @@ function gqlToSql(viewer, {name, properties, edges}, {args, props, filters}, par
 	return `select ${cols.join(',')}`;
 }
 
-define('meta', {
-	properties: {
-		key:   {type: 'text', unique: true},
-		value: {type:'text'}
-	}
-});
-
 // Functions that will be exposed via SQL
 export var sql_exports = {
 	arla_fire_trigger(e){

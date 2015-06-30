@@ -187,17 +187,24 @@ module.exports = function(opts){
 					stream = app.wal.stream(qinfo.last_id)
 				}
 				// stream each value to query engine
-				var p = Promise.resolve();
 				return stream.then(function(stream){
 					return new Promise(function(resolve, reject){
-						stream.onValue(function(o){
-							count++;
-							p = p.then(function(){
-								return exec(o.value[0], o.value[1], true)
-							});
-						}).onEnd(function(){
-							resolve(p);
-						}).onError(reject);
+						pg.connect(app.conString, function(err, db, done){
+							if( err ){
+								return reject(err);
+							}
+							stream.onValue(function(o){
+								db.query('select arla_exec($1::text, $2::json, $3::boolean)', [o.value[0], JSON.stringify(o.value[1]), true], function(err, result){
+									if( err ){
+										return reject(err);
+									}
+									count++;
+								})
+							}).onEnd(function(){
+								console.log('loaded '+count+' ops');
+								resolve(true);
+							}).onError(reject);
+						})
 					})
 				})
 			})

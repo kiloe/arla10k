@@ -7,8 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
-      "arla_server": "./index.js",
-      "arla_tests": "./tests/runner.js"
+    "arla_server": "./index.js",
+    "arla_tests": "./tests/runner.js"
   },
   "author": "Chris Farmiloe",
   "license": "MIT",

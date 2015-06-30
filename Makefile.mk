@@ -2,43 +2,34 @@
 # Makefile for building arla
 # Note: This is usually called as part of the docker container build
 #
-default: build
+default: bin/arla
 
 GO = CGO_ENABLED=0 GOPATH=`pwd` go
 SHELL := /bin/bash
-PLV8JS=$(wildcard src/db/*.js)
 
-dist:
-	mkdir -p dist/bin
+bin/arla: src/arla/querystore/postgres_runtime.go
+	$(GO) version
+	$(GO) build -o bin/arla arla
 
-dist/graphql.js: dist
-	pegjs -e 'module.exports' < src/db/graphql.peg >> $@
+src/arla/querystore/postgres_runtime.go: src/db/graphql.js
+	echo 'package querystore' > $@
+	echo 'const postgresRuntimeScript = `' >> $@
+	browserify src/db/index.js -t [ /usr/local/lib/node_modules/babelify --modules common ] | sed "s/\`/'/g" >> $@
+	echo '`' >> $@
+	cat -n $@
 
-js: dist/graphql.js
-	cp src/db/*.js dist
+src/db/graphql.js:
+	pegjs -e 'module.exports' < src/db/graphql.peg > $@
 
-dist/template.sql: js
-	cp src/db/template.sql $@
-
-dist/bin/initdb: dist/template.sql
-	cp src/db/initdb.bash $@
-
-dist/bin/init: dist/bin/initdb
-	$(GO) get init
-	$(GO) build -o $@ init
-
-build: dist/bin/init
-
-install: build
-	mkdir -p /var/lib/arla/
-	cp -r dist/* /var/lib/arla/
+install: bin/arla
+	cp bin/arla /usr/bin/
 	cp src/db/pg_hba.conf /etc/postgresql/9.4/main/
 	cp src/db/postgresql.conf /etc/postgresql/9.4/main/
-	npm install --global ./src/api
-	cp -r src/client-builder /usr/local/bin
 	mkdir -p /var/state
 
 clean:
-	rm -rf ./dist
+	rm -f bin/arla
+	rm -f src/arla/querystore/postgres_runtime.go
+	rm -f src/db/graphql.js
 
-.PHONY: default build dist clean js
+.PHONY: default clean install

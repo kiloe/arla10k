@@ -1,5 +1,3 @@
-import db from "../db";
-import assert from "../assert";
 /*
 
 NOTE: THIS IS JUST AN EXAMPLE APP FOR TESTING!

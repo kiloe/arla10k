@@ -1,3 +1,6 @@
+package querystore
+
+const postgresInitScript = `
 --
 -- NOTE: This file will be executed multiple times
 ---
@@ -8,9 +11,10 @@ CREATE EXTENSION IF NOT EXISTS "plv8";
 
 -- function executed for each new context to setup the environment
 CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
-	this.arla = this;
+	var arla = {};
 	try {
-		import * from "index.js"; // This is fake, but sematically correct
+		__RUNTIME__
+		__INDEX_JS__
 	} catch (e) {
 		plv8.elog(ERROR, e.stack || e.message || e.toString());
 	}
@@ -60,3 +64,6 @@ $$ LANGUAGE "sql" VOLATILE;
 CREATE OR REPLACE FUNCTION until(t timestamptz) RETURNS interval AS $$
 	select age(t, now());
 $$ LANGUAGE "sql" VOLATILE;
+
+SELECT arla_migrate();
+`
