@@ -145,7 +145,7 @@ func (p *postgres) Start() (err error) {
 
 func (p *postgres) NewWriter() (w io.WriteCloser, err error) {
 	// setup the writer interface
-	if p.writeCmd, err = p.command("psql"); err != nil {
+	if p.writeCmd, err = p.command("psql", "-q", "-v", "ON_ERROR_STOP=1"); err != nil {
 		return
 	}
 	if w, err = p.writeCmd.StdinPipe(); err != nil {
@@ -273,7 +273,6 @@ func (p *postgres) init() error {
 	}
 	// compile sql
 	sql := strings.Replace(postgresInitScript, "//CONFIG//", string(js.Bytes()), 1)
-	sql = strings.Replace(sql, "//RUNTIME//", string(postgresRuntimeScript), 1)
 	// exec sql
 	cmd, err = p.command("psql", "-v", "ON_ERROR_STOP=1")
 	if err != nil {
@@ -284,9 +283,9 @@ func (p *postgres) init() error {
 	if err != nil {
 		// extract line no of error
 		// dump context of sql to help debugging
-		cmd, _ = p.command("cat", "-n", "-")
-		cmd.Stdin = strings.NewReader(sql)
-		cmd.Run()
+		//cmd, _ = p.command("cat", "-n", "-")
+		//cmd.Stdin = strings.NewReader(sql)
+		//cmd.Run()
 
 		return err
 	}

@@ -1,0 +1,2 @@
+
+SELECT arla_migrate();

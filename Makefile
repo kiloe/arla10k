@@ -6,31 +6,32 @@ default: all
 SHELL := /bin/bash
 PWD := $(shell pwd)
 BASE := arla/base
-RUN := docker run --rm -i -v $(PWD):/app -w /app -v $(PWD)/src/db/:/etc/postgresql/9.4/main
+CONF := src/arla/querystore/conf
+JS := src/arla/querystore/js
+SQL := src/arla/querystore/sql
+RUN := docker run --rm -i -v $(PWD):/app -w /app -v $(PWD)/$(CONF):/etc/postgresql/9.4/main
 GO := $(RUN) --entrypoint /usr/bin/go -e GOPATH=/app $(BASE)
 BROWSERIFY := $(RUN) --entrypoint /usr/local/bin/browserify $(BASE)
 PEGJS := $(RUN) --entrypoint /usr/local/bin/pegjs $(BASE)
-JS := src/arla/querystore/runtime/
 
 build: bin/arla
 	docker build -t arla/10k .
 
-bin/arla: src/arla/querystore/postgres_runtime.go
+bin/arla: src/arla/querystore/postgres_init.go
 	mkdir -p bin
 	$(GO) build -o bin/arla arla
 
 $(JS)/graphql.js: $(JS)/graphql.peg
 	$(PEGJS) -e 'module.exports' < $< > $@
 
-$(JS)/index.compiled.js: $(JS)/index.js $(JS)/graphql.js
+$(SQL)/02_js.sql: $(JS)/index.js $(JS)/graphql.js
 	$(BROWSERIFY) $< -t [ /usr/local/lib/node_modules/babelify --modules common ] >> $@
 
-src/arla/querystore/postgres_runtime.go:  $(JS)/runtime.js
+src/arla/querystore/postgres_init.go: $(SQL)/02_js.sql $(wildcard $(SQL)/*.sql)
 	echo 'package querystore' > $@
-	echo 'const postgresRuntimeScript = `' >> $@
-	cat $(JS)/index.compiled.js  | sed "s/\`/'/g" >> $@
+	echo 'const postgresInitScript = `' >> $@
+	cat $(SQL)/*.sql | sed "s/\`/'/g" >> $@
 	echo '`' >> $@
-	cat -n $@
 
 all: bin/arla
 
@@ -39,8 +40,8 @@ release: build
 
 clean:
 	rm -f bin/arla
-	rm -f src/arla/querystore/postgres_runtime.go
-	rm -f $(JS)/index.compiled.js
+	rm -f src/arla/querystore/postgres_init.go
+	rm -f $(SQL)/02_js.sql
 	rm -f $(JS)/graphql.js
 
 test: all
