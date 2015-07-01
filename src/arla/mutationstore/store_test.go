@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"code.google.com/p/go-uuid/uuid"
 )
 
 var tmpdir string
@@ -56,7 +54,7 @@ func TestWriteThenRead(t *testing.T) {
 
 func BenchmarkWrites(b *testing.B) {
 	m := &schema.Mutation{
-		ID:   uuid.NewUUID(),
+		ID:   schema.TimeUUID(),
 		Name: "exampleOp",
 	}
 	// remove file if exists
@@ -78,7 +76,7 @@ func BenchmarkWrites(b *testing.B) {
 
 func BenchmarkReads(b *testing.B) {
 	m := &schema.Mutation{
-		ID:   uuid.NewUUID(),
+		ID:   schema.TimeUUID(),
 		Name: "exampleOp",
 	}
 	// remove file if exists

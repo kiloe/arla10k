@@ -2,7 +2,7 @@ import Kefir from 'kefir';
 import {v4} from 'node-uuid';
 
 // import action names
-const ACTIONS = __ACTIONS_LIST__;
+const ACTIONS = ['__ACTIONS_LIST__'];
 
 // polyfills
 import 'babelify/polyfill';

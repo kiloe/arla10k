@@ -19,8 +19,12 @@ import (
 )
 import "github.com/jackc/pgx"
 
+var devNull *os.File
+
 func init() {
 	pgx.DefaultTypeFormats["json"] = pgx.BinaryFormatCode
+	// blackhole
+	devNull, _ = os.OpenFile(os.DevNull, os.O_WRONLY, 0644)
 }
 
 // jsonbytes is directly writes the response of a ::json type to it's io.Writer
@@ -74,8 +78,11 @@ type postgres struct {
 	cfg   *Config
 	pgcfg pgx.ConnConfig
 	// block/unblock Start
-	cmd  *exec.Cmd
-	quit chan (error)
+	cmd   *exec.Cmd
+	quit  chan (error)
+	ready chan (bool)
+	// streaming sql
+	writeCmd *exec.Cmd
 }
 
 // Stop disconnects and shutsdown the queryengine
@@ -136,6 +143,22 @@ func (p *postgres) Start() (err error) {
 	return nil
 }
 
+func (p *postgres) NewWriter() (w io.WriteCloser, err error) {
+	// setup the writer interface
+	if p.writeCmd, err = p.command("psql"); err != nil {
+		return
+	}
+	if w, err = p.writeCmd.StdinPipe(); err != nil {
+		return
+	}
+	p.writeCmd.Stdout = devNull
+	p.writeCmd.Stderr = devNull
+	if err = p.writeCmd.Start(); err != nil {
+		return
+	}
+	return
+}
+
 func (p *postgres) Wait() error {
 	return <-p.quit
 }
@@ -145,6 +168,8 @@ func (p *postgres) spawn() (err error) {
 	if err != nil {
 		return err
 	}
+	//p.cmd.Stdout = devNull
+	//p.cmd.Stderr = devNull
 	if err := p.cmd.Start(); err != nil {
 		return err
 	}
@@ -247,8 +272,8 @@ func (p *postgres) init() error {
 		return err
 	}
 	// compile sql
-	sql := strings.Replace(postgresInitScript, "__INDEX_JS__", string(js.Bytes()), 1)
-	sql = strings.Replace(sql, "__RUNTIME__", string(postgresRuntimeScript), 1)
+	sql := strings.Replace(postgresInitScript, "//CONFIG//", string(js.Bytes()), 1)
+	sql = strings.Replace(sql, "//RUNTIME//", string(postgresRuntimeScript), 1)
 	// exec sql
 	cmd, err = p.command("psql", "-v", "ON_ERROR_STOP=1")
 	if err != nil {

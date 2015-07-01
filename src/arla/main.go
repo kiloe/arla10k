@@ -16,13 +16,15 @@ type opts struct {
 
 func main() {
 	// init query store
-	qs := querystore.New(&querystore.Config{
+	qs, err := querystore.New(&querystore.Config{
 		Path: "/app/index.js",
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	go func() {
-		err := qs.Start()
-		if err != nil {
-			log.Fatal("qs start", err)
+		if err := qs.Wait(); err != nil {
+			log.Fatal("qs died! ", err)
 		}
 	}()
 	// init action store
@@ -30,12 +32,16 @@ func main() {
 	if err != nil {
 		log.Fatal("ms open", err)
 	}
-	for m := range ms.Replay() {
-		err := qs.Mutate(m)
-		if err != nil {
-			log.Fatal("ms mutate", err)
-		}
+	// replay
+	w, err := qs.NewWriter()
+	if err != nil {
+		log.Fatal(err)
 	}
+	if _, err := ms.WriteTo(w); err != nil {
+		log.Fatal(err)
+	}
+	w.Close()
+	fmt.Println("...and we're back")
 	// init ident store
 	is, err := identstore.Open("/var/state/ident")
 	if err != nil {
@@ -68,6 +74,9 @@ func main() {
 	// run qs.Query
 	// return response json / FAIL
 	// start http server
-	fmt.Println("starting http")
-	log.Fatal(http.ListenAndServe(":80", nil))
+	fs := http.FileServer(http.Dir("/app/public"))
+	http.Handle("/", fs)
+
+	log.Println("Listening...")
+	http.ListenAndServe(":80", nil)
 }

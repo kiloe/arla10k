@@ -1,10 +1,4 @@
-import "./polyfill";
-import * as assert from "./assert";
-import console from "./console";
-import db from "./db";
 import gql from "./graphql"
-
-var SHOW_DEBUG = true;
 
 var listeners = {};
 var tests = [];
@@ -13,7 +7,7 @@ var ddl = [];
 var actions = {};
 
 export function action(name, fn){
-	actions[name] = fn.bind(db);
+	actions[name] = fn;
 }
 
 function addListener(kind, op, table, fn){
@@ -202,7 +196,7 @@ function gqlToSql(viewer, {name, properties, edges}, {args, props, filters}, par
 }
 
 // Functions that will be exposed via SQL
-export var sql_exports = {
+plv8.functions = {
 	arla_fire_trigger(e){
 		let op = e.opKind + '-' + e.op;
 		['*', e.table].forEach(function(table){
@@ -249,6 +243,10 @@ export var sql_exports = {
 		}
 		return true;
 	},
+	arla_replay(mutation){
+		plv8.function.arla_exec(mutation.ID, mutation.Name, mutation.Args, true);
+		return true;
+	},
 	arla_exec(viewer, name, args, replay){
 		if( name == 'resolver' ){
 			throw "no such action resolver"; // HACK
@@ -288,7 +286,7 @@ export var sql_exports = {
 				console.debug(`There is no 'resolver' function declared`);
 				throw err;
 			}
-			var res = actions.resolver.bind(db)(err, name, args, actions);
+			var res = actions.resolver(err, name, args, actions);
 			console.debug('action', name, args, 'initially failed, but was resolved')
 			return res;
 		}
@@ -313,4 +311,43 @@ export var sql_exports = {
 			throw err;
 		}
 	}
+}
+
+arla.configure = function(cfg){
+
+	// setup the config table
+	define('arla_config', {
+		properties: {
+			key:   {type: 'string', unique:true},
+			value: {type: 'json'}
+		},
+		afterChange({key, value}){
+			switch(key){
+				case 'logLevel':
+					console.logLevel = value;
+					break;
+				default:
+					break;
+			}
+		}
+	});
+
+	// register schema
+	Object.keys(cfg.schema).forEach(function(k){
+		define(k, cfg.schema[k]);
+	});
+
+	// register actions from app config
+	Object.keys(cfg.actions).forEach(function(k){
+		action(k, cfg.actions[k]);
+	});
+
+	// attach all runtime functions to plv8 global
+
+};
+
+try {
+	//CONFIG//
+} catch (e) {
+	plv8.elog(ERROR, e.stack || e.message || e.toString());
 }

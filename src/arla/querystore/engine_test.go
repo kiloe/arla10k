@@ -4,7 +4,6 @@ import (
 	"arla/schema"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"testing"
@@ -13,16 +12,13 @@ import (
 var qs Engine
 
 func TestMain(m *testing.M) {
-	fmt.Println("creating engine...")
-	qs = New(&Config{
+	var err error
+	qs, err = New(&Config{
 		Path: "/app/test-app/index.js",
 	})
-	fmt.Println("starting engine...")
-	err := qs.Start()
 	if err != nil {
-		log.Fatal("qs start", err)
+		log.Fatal(err)
 	}
-	fmt.Println("running tests...")
 	st := m.Run()
 	qs.Stop()
 	os.Exit(st)

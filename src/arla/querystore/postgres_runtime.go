@@ -2047,6 +2047,10 @@ var sql_exports = {
 		}
 		return true;
 	},
+	arla_replay: function arla_replay(mutation) {
+		sql_exports.arla_exec(mutation.ID, mutation.Name, mutation.Args, true);
+		return true;
+	},
 	arla_exec: function arla_exec(viewer, name, args, replay) {
 		if (name == "resolver") {
 			throw "no such action resolver"; // HACK

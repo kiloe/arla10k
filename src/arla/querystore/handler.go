@@ -12,8 +12,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // NewHandler creates a new Handler for the given engine Config
-func NewHandler(cfg *Config) http.Handler {
-	return &Handler{
-		Engine: New(cfg),
-	}
+func NewHandler(qs Engine) http.Handler {
+	return &Handler{Engine: qs}
 }

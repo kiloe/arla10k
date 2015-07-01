@@ -4,10 +4,12 @@ package mutationstore
 
 import (
 	"arla/schema"
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
 // Log gives safe sequential access to the log of Mutations
@@ -15,6 +17,7 @@ type Log struct {
 	filename string
 	in       chan (*writeRequest)
 	closed   bool
+	io.Reader
 }
 
 type writeRequest struct {
@@ -104,6 +107,44 @@ func (l *Log) Replay() <-chan (*schema.Mutation) {
 		close(ch)
 	}()
 	return ch
+}
+
+// WriteTo writes the log as SQL statements to w
+func (l *Log) WriteTo(w io.Writer) (n int64, err error) {
+	f, err := os.OpenFile(l.filename, os.O_RDONLY, 0660)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	prefix := "select arla_replay('"
+	suffix := "'::json);\n"
+	s := bufio.NewScanner(f)
+	nx := 0
+	line := 0
+	start := time.Now()
+	for s.Scan() {
+		line++
+		// write prefix
+		if nx, err = w.Write([]byte(prefix)); err != nil {
+			return
+		}
+		n += int64(nx)
+		// write line
+		if nx, err = w.Write(s.Bytes()); err != nil {
+			return
+		}
+		n += int64(nx)
+		// write suffix
+		if nx, err = w.Write([]byte(suffix)); err != nil {
+			return
+		}
+		n += int64(nx)
+	}
+	if err = s.Err(); err != nil {
+		return
+	}
+	fmt.Println(line, " ops took ", time.Since(start))
+	return
 }
 
 // Open sets up access to a Log for a given filename.
