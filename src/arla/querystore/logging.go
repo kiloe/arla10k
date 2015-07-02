@@ -2,9 +2,12 @@ package querystore
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/mgutz/ansi"
@@ -41,7 +44,7 @@ func (ll logLevel) Fprintln(w io.Writer, args ...interface{}) (n int, err error)
 	case ERROR:
 		fmt.Fprintf(w, ansi.Red)
 	}
-	// fmt.Fprint(w, ll, "--> ")
+	fmt.Fprint(w, ll, "--> ")
 	return fmt.Fprintln(w, args...)
 }
 
@@ -85,11 +88,43 @@ func NewLogFormatter(w io.Writer) *LogFormatter {
 				case "WARN":
 					level = WARN
 				case "ERROR":
+					level = ERROR
+				case "DETAIL":
+					level = ERROR
 				case "FATAL":
 					level = ERROR
-				}
-				if level == UNKNOWN {
+				default:
 					line = s
+				}
+			}
+			if level == ERROR {
+				// try to extract better info about the error
+				var plv8err = regexp.MustCompile(`plv8_init:(\d+):(\d+)`)
+				if plv8err.MatchString(line) {
+					if lineNo, err := strconv.Atoi(plv8err.FindStringSubmatch(line)[1]); err == nil {
+						// add offset to the plv8_init function
+						lineNo += 3
+						// build context
+						amt := 5
+						var buf bytes.Buffer
+						src := strings.Split(postgresInitScript, "\n")
+						start := lineNo - amt
+						if start < 0 {
+							start = 0
+						}
+						end := lineNo + amt
+						if end > len(src)-1 {
+							end = len(src) - 1
+						}
+						for i := start; i < end; i++ {
+							col := ansi.LightBlack
+							if i == lineNo {
+								col = ansi.Red
+							}
+							fmt.Fprintln(&buf, ansi.Reset, col, src[i], ansi.Reset)
+						}
+						line = fmt.Sprintf("%s\n%s", line, buf.String())
+					}
 				}
 			}
 			if log.Level <= level {

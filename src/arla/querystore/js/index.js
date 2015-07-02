@@ -292,34 +292,39 @@ import gql from "./graphql"
 	};
 
 	arla.init = function(){
-		// build schema
-		ddl.forEach(function(stmt){
-			db.query(stmt);
-		});
-		// Only options defined here are allowed
-		let opts = {
-			logLevel: console.INFO,
-			actions: [],
-		};
-		for( let k in opts ){
-			db.query(`
-				insert into arla_config (key,value) values ($1::text, $2::json)
-			`, k, JSON.stringify(opts[k]));
-		}
-		// evaluate other config options
-		for( let k in arla.cfg ){
-			switch(k){
-			case 'schema':
-				break;
-			default:
-				if( opts[k] ){
-					db.query(`
-						update arla_config set value = $1 where key = $2
-					`, arla.cfg[k], k);
-				} else {
-					throw 'no such config option: ' + k;
+		try{
+			// build schema
+			ddl.forEach(function(stmt){
+				db.query(stmt);
+			});
+			// Only options defined here are allowed
+			let opts = {
+				logLevel: console.INFO,
+				actions: [],
+			};
+			for( let k in opts ){
+				db.query(`
+					insert into arla_config (key,value) values ($1::text, $2::json)
+				`, k, JSON.stringify(opts[k]));
+			}
+			throw new Error('this is an error');
+			// evaluate other config options
+			for( let k in arla.cfg ){
+				switch(k){
+				case 'schema':
+					break;
+				default:
+					if( opts[k] ){
+						db.query(`
+							update arla_config set value = $1 where key = $2
+						`, arla.cfg[k], k);
+					} else {
+						throw 'no such config option: ' + k;
+					}
 				}
 			}
+		}catch(e){
+			arla.throwError(e);
 		}
 	}
 
@@ -357,11 +362,15 @@ import gql from "./graphql"
 		arla.cfg = cfg;
 	}
 
+	arla.throwError = function(e){
+    plv8.elog(ERROR, e.stack || e.message || e.toString());
+	}
+
 })();
 
 // Execute the user's code
 try{
 	//CONFIG//
 } catch (e) {
-    plv8.elog(ERROR, e.stack || e.message || e.toString());
+		arla.throwError(e);
 }

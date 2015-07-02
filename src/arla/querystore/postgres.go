@@ -280,8 +280,9 @@ func (p *postgres) init() error {
 	}
 	var js bytes.Buffer
 	cmd.Stdout = &js
+	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return err
+		return fmt.Errorf("failed to compile app source: %s", err)
 	}
 	// compile sql
 	sql := strings.Replace(postgresInitScript, "//CONFIG//", string(js.Bytes()), 1)
@@ -291,17 +292,11 @@ func (p *postgres) init() error {
 		return err
 	}
 	cmd.Stdin = strings.NewReader(sql)
-	cmd.Stdout = devNull
-	cmd.Stderr = devNull
+	//cmd.Stderr = p.log // wire up client output to server logs
+	//cmd.Stdout = p.log // wire up client output to server logs
 	err = cmd.Run()
 	if err != nil {
-		// extract line no of error
-		// dump context of sql to help debugging
-		//cmd, _ = p.command("cat", "-n", "-")
-		//cmd.Stdin = strings.NewReader(sql)
-		//cmd.Run()
-
-		return err
+		return fmt.Errorf("failed to initialize arla: %s", err)
 	}
 	return nil
 }

@@ -30,6 +30,9 @@ func main() {
 			log.Fatal("qs died! ", err)
 		}
 	}()
+	// extract app config
+	// cfg := qs.GetConfig()
+
 	// init action store
 	fmt.Println("starting mutation service...")
 	ms, err := mutationstore.Open("/var/state/datastore")

@@ -1369,30 +1369,35 @@ var _graphql2 = _interopRequireDefault(_graphql);
 	};
 
 	arla.init = function () {
-		// build schema
-		ddl.forEach(function (stmt) {
-			db.query(stmt);
-		});
-		// Only options defined here are allowed
-		var opts = {
-			logLevel: console.INFO,
-			actions: []
-		};
-		for (var k in opts) {
-			db.query('\n\t\t\t\tinsert into arla_config (key,value) values ($1::text, $2::json)\n\t\t\t', k, JSON.stringify(opts[k]));
-		}
-		// evaluate other config options
-		for (var k in arla.cfg) {
-			switch (k) {
-				case 'schema':
-					break;
-				default:
-					if (opts[k]) {
-						db.query('\n\t\t\t\t\t\tupdate arla_config set value = $1 where key = $2\n\t\t\t\t\t', arla.cfg[k], k);
-					} else {
-						throw 'no such config option: ' + k;
-					}
+		try {
+			// build schema
+			ddl.forEach(function (stmt) {
+				db.query(stmt);
+			});
+			// Only options defined here are allowed
+			var opts = {
+				logLevel: console.INFO,
+				actions: []
+			};
+			for (var k in opts) {
+				db.query('\n\t\t\t\t\tinsert into arla_config (key,value) values ($1::text, $2::json)\n\t\t\t\t', k, JSON.stringify(opts[k]));
 			}
+			throw new Error('this is an error');
+			// evaluate other config options
+			for (var k in arla.cfg) {
+				switch (k) {
+					case 'schema':
+						break;
+					default:
+						if (opts[k]) {
+							db.query('\n\t\t\t\t\t\t\tupdate arla_config set value = $1 where key = $2\n\t\t\t\t\t\t', arla.cfg[k], k);
+						} else {
+							throw 'no such config option: ' + k;
+						}
+				}
+			}
+		} catch (e) {
+			arla.throwError(e);
 		}
 	};
 
@@ -1432,11 +1437,15 @@ var _graphql2 = _interopRequireDefault(_graphql);
 		// store cfg for later
 		arla.cfg = cfg;
 	};
+
+	arla.throwError = function (e) {
+		plv8.elog(ERROR, e.stack || e.message || e.toString());
+	};
 })();
 
 // Execute the user's code
 try {} catch (e) {
-	plv8.elog(ERROR, e.stack || e.message || e.toString());
+	arla.throwError(e);
 }
 
 //CONFIG//
