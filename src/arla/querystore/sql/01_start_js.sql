@@ -36,18 +36,19 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 
 	// arla global
 	var arla = {};
+	plv8.arla = arla;
 
 	// add console logging
 	var console = (function(console){
 
-		console.NONE = 0;
+		console.ALL = 0;
 		console.DEBUG = 1;
 		console.INFO = 2;
 		console.LOG = 3;
 		console.WARN = 4;
 		console.ERROR = 5;
-		console.logLevel = console.ERROR;
-		function logger(level, pglevel) {
+		console.logLevel = console.INFO;
+		function logger(level, pglevel, tag) {
 			var args = [];
 			for (var i = 2; i < arguments.length; i++) {
 				args.push(arguments[i]);
@@ -59,22 +60,29 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 				return msg;
 			}).join(' ');
 			(msg || '').split(/\n/g).forEach(function(line){
-				if( console.logLevel <= level   ){
-					plv8.elog(level, line);
+				if( console.logLevel <= level ){
+					plv8.elog(pglevel, line);
 				}
 			})
 		}
-		console.debug = logger.bind(console, console.DEBUG, NOTICE);
-		console.info  = logger.bind(console, console.INFO, INFO);
-		console.log   = logger.bind(console, console.LOG, NOTICE);
-		console.warn  = logger.bind(console, console.WARN, WARNING);
-		console.error = logger.bind(console, console.ERROR, WARNING);
+		console.debug = logger.bind(console, console.DEBUG, NOTICE, "DEBUG:");
+		console.info  = logger.bind(console, console.INFO, NOTICE, "INFO:");
+		console.log   = logger.bind(console, console.LOG, NOTICE, "LOG:");
+		console.warn  = logger.bind(console, console.WARN, NOTICE, "WARN:");
+		console.error = logger.bind(console, console.ERROR, NOTICE, "ERROR:");
 		return console;
 	})({});
 
 	// expose database
 	var db = (function(db){
-		db.query = plv8.execute;
+		db.query = function(sql){
+			var args = [];
+			for (var i = 1; i < arguments.length; i++) {
+				args.push(arguments[i]);
+			}
+			console.debug(sql, args);
+			return plv8.execute(sql, args);
+		}
 		db.transaction = plv8.subtransaction;
 		return db;
 	})({});

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 )
 
 // Log gives safe sequential access to the log of Mutations
@@ -17,6 +16,7 @@ type Log struct {
 	filename string
 	in       chan (*writeRequest)
 	closed   bool
+	count    int64
 	io.Reader
 }
 
@@ -35,6 +35,7 @@ func (l *Log) Write(m *schema.Mutation) error {
 		return fmt.Errorf("cannot write to closed log")
 	}
 	l.in <- r
+	l.count++
 	return <-r.err
 }
 
@@ -121,7 +122,6 @@ func (l *Log) WriteTo(w io.Writer) (n int64, err error) {
 	s := bufio.NewScanner(f)
 	nx := 0
 	line := 0
-	start := time.Now()
 	for s.Scan() {
 		line++
 		// write prefix
@@ -139,12 +139,17 @@ func (l *Log) WriteTo(w io.Writer) (n int64, err error) {
 			return
 		}
 		n += int64(nx)
+		l.count++
 	}
 	if err = s.Err(); err != nil {
 		return
 	}
-	fmt.Println(line, " ops took ", time.Since(start))
 	return
+}
+
+// Len returns the current number of mutations logged
+func (l *Log) Len() int64 {
+	return l.count
 }
 
 // Open sets up access to a Log for a given filename.

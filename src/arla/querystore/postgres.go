@@ -83,6 +83,16 @@ type postgres struct {
 	ready chan (bool)
 	// streaming sql
 	writeCmd *exec.Cmd
+	// log output
+	log *LogFormatter
+}
+
+func (p *postgres) SetLogLevel(level logLevel) {
+	p.log.Level = level
+}
+
+func (p *postgres) GetLogLevel() logLevel {
+	return p.log.Level
 }
 
 // Stop disconnects and shutsdown the queryengine
@@ -145,7 +155,7 @@ func (p *postgres) Start() (err error) {
 
 func (p *postgres) NewWriter() (w io.WriteCloser, err error) {
 	// setup the writer interface
-	if p.writeCmd, err = p.command("psql", "-q", "-v", "ON_ERROR_STOP=1"); err != nil {
+	if p.writeCmd, err = p.command("psql", "-v", "ON_ERROR_STOP=1"); err != nil {
 		return
 	}
 	if w, err = p.writeCmd.StdinPipe(); err != nil {
@@ -168,8 +178,8 @@ func (p *postgres) spawn() (err error) {
 	if err != nil {
 		return err
 	}
-	//p.cmd.Stdout = devNull
-	//p.cmd.Stderr = devNull
+	p.cmd.Stderr = p.log
+	p.cmd.Stdout = p.log
 	if err := p.cmd.Start(); err != nil {
 		return err
 	}
@@ -210,8 +220,8 @@ func (p *postgres) command(name string, args ...string) (*exec.Cmd, error) {
 	cmd := exec.Command(exe, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = devNull
+	cmd.Stderr = devNull
 	cmd.Env = append(os.Environ(), []string{
 		"PGUSER=postgres",
 		"PGDATABASE=arla",
@@ -240,7 +250,7 @@ func (p *postgres) pollForReady() <-chan (bool) {
 	go func() {
 		for {
 			time.Sleep(500 * time.Millisecond)
-			if err := p.run("pg_isready"); err != nil {
+			if err := p.run("pg_isready", "-d", "postgres"); err != nil {
 				log.Println(err)
 				continue
 			}
@@ -253,9 +263,11 @@ func (p *postgres) pollForReady() <-chan (bool) {
 
 // initialize the database
 func (p *postgres) init() error {
-	p.run("dropdb", "arla")
 	if err := p.run("createdb"); err != nil {
-		return err
+		p.run("dropdb", "arla")
+		if err := p.run("createdb"); err != nil {
+			return err
+		}
 	}
 	// compile js
 	cmd, err := p.command("browserify",
@@ -279,6 +291,8 @@ func (p *postgres) init() error {
 		return err
 	}
 	cmd.Stdin = strings.NewReader(sql)
+	cmd.Stdout = devNull
+	cmd.Stderr = devNull
 	err = cmd.Run()
 	if err != nil {
 		// extract line no of error
