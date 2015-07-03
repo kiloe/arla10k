@@ -307,7 +307,6 @@ import gql from "./graphql"
 					insert into arla_config (key,value) values ($1::text, $2::json)
 				`, k, JSON.stringify(opts[k]));
 			}
-			throw new Error('this is an error');
 			// evaluate other config options
 			for( let k in arla.cfg ){
 				switch(k){
@@ -319,7 +318,7 @@ import gql from "./graphql"
 							update arla_config set value = $1 where key = $2
 						`, arla.cfg[k], k);
 					} else {
-						throw 'no such config option: ' + k;
+						console.warn('ignoring invalid config option:',k);
 					}
 				}
 			}

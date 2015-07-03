@@ -68,7 +68,7 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 		console.debug = logger.bind(console, console.DEBUG, NOTICE, "DEBUG:");
 		console.info  = logger.bind(console, console.INFO, NOTICE, "INFO:");
 		console.log   = logger.bind(console, console.LOG, NOTICE, "LOG:");
-		console.warn  = logger.bind(console, console.WARN, NOTICE, "WARN:");
+		console.warn  = logger.bind(console, console.WARN, WARNING, "WARN:");
 		console.error = logger.bind(console, console.ERROR, NOTICE, "ERROR:");
 		return console;
 	})({});

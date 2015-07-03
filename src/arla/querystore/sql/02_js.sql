@@ -1382,7 +1382,6 @@ var _graphql2 = _interopRequireDefault(_graphql);
 			for (var k in opts) {
 				db.query('\n\t\t\t\t\tinsert into arla_config (key,value) values ($1::text, $2::json)\n\t\t\t\t', k, JSON.stringify(opts[k]));
 			}
-			throw new Error('this is an error');
 			// evaluate other config options
 			for (var k in arla.cfg) {
 				switch (k) {
@@ -1392,7 +1391,7 @@ var _graphql2 = _interopRequireDefault(_graphql);
 						if (opts[k]) {
 							db.query('\n\t\t\t\t\t\t\tupdate arla_config set value = $1 where key = $2\n\t\t\t\t\t\t', arla.cfg[k], k);
 						} else {
-							throw 'no such config option: ' + k;
+							console.warn('ignoring invalid config option:', k);
 						}
 				}
 			}

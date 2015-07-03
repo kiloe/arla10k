@@ -85,12 +85,16 @@ func NewLogFormatter(w io.Writer) *LogFormatter {
 					} else {
 						level = LOG
 					}
-				case "WARN":
+				case "WARN", "WARNING":
 					level = WARN
 				case "ERROR":
 					level = ERROR
 				case "DETAIL":
-					level = ERROR
+					if strings.Contains(line, "plv8_init() LINE") {
+						level = DEBUG
+					} else {
+						level = ERROR
+					}
 				case "FATAL":
 					level = ERROR
 				default:

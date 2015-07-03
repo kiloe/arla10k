@@ -292,8 +292,8 @@ func (p *postgres) init() error {
 		return err
 	}
 	cmd.Stdin = strings.NewReader(sql)
-	//cmd.Stderr = p.log // wire up client output to server logs
-	//cmd.Stdout = p.log // wire up client output to server logs
+	// cmd.Stderr = p.log // wire up client output to server logs
+	// cmd.Stdout = p.log // wire up client output to server logs
 	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to initialize arla: %s", err)
