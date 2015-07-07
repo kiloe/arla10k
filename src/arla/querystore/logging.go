@@ -85,7 +85,7 @@ func NewLogFormatter(w io.Writer) *LogFormatter {
 					} else {
 						level = LOG
 					}
-				case "WARN", "WARNING":
+				case "WARN":
 					level = WARN
 				case "ERROR":
 					level = ERROR
