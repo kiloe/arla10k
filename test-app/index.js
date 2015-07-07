@@ -5,9 +5,6 @@ arla.configure({
   // verbosity sets which level of logs will be output.
   // possible options are: DEBUG=1, INFO=2, LOG=3, WARN=2, ERROR=1
   logLevel: console.INFO,
-  // engine tells arla which queryengine to use.
-  // note: this does nothing now, it's always postgres.
-  engine: 'postgres',
   // actions declares the mutation functions that are exposed
   actions: actions,
   // schema is an Object that declares the struture of your data

@@ -3,13 +3,20 @@
 #
 default: all
 
+# fix issue where removing containers breaks ci
+ifeq ($(CIRCLECI),true)
+RM :=
+else
+RM := --rm
+endif
+
 SHELL := /bin/bash
 PWD := $(shell pwd)
 BASE := arla/base
 CONF := src/arla/querystore/conf
 JS := src/arla/querystore/js
 SQL := src/arla/querystore/sql
-RUN := docker run --rm -i -v $(PWD):/app -w /app -v $(PWD)/$(CONF):/etc/postgresql/9.4/main
+RUN := docker run $(RM) -i -v $(PWD):/app -w /app -v $(PWD)/$(CONF):/etc/postgresql/9.4/main
 GO := $(RUN) --entrypoint /usr/bin/go -e GOPATH=/app $(BASE)
 BROWSERIFY := $(RUN) --entrypoint /usr/local/bin/browserify $(BASE)
 PEGJS := $(RUN) --entrypoint /usr/local/bin/pegjs $(BASE)
