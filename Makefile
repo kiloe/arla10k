@@ -13,19 +13,22 @@ endif
 SHELL := /bin/bash
 PWD := $(shell pwd)
 BASE := arla/base
+IMAGE := arla/10k
 CONF := src/arla/querystore/conf
 JS := src/arla/querystore/js
 SQL := src/arla/querystore/sql
 RUN := docker run $(RM) -i -v $(PWD):/app -w /app -v $(PWD)/$(CONF):/etc/postgresql/9.4/main
-GO := $(RUN) --entrypoint /usr/bin/go -e GOPATH=/app $(BASE)
+GO := $(RUN) --entrypoint /usr/bin/go -e GOPATH=/app -e CGO_ENABLED=0 $(BASE)
+DELETE := $(RUN) --entrypoint /bin/rm $(BASE)
 BROWSERIFY := $(RUN) --entrypoint /usr/local/bin/browserify $(BASE)
 PEGJS := $(RUN) --entrypoint /usr/local/bin/pegjs $(BASE)
 
 build: bin/arla
-	docker build -t arla/10k .
+	docker build -t $(IMAGE) .
 
 bin/arla: src/arla/querystore/postgres_init.go
 	mkdir -p bin
+	$(GO) get arla
 	$(GO) build -o bin/arla arla
 
 $(JS)/graphql.js: $(JS)/graphql.peg
@@ -43,13 +46,16 @@ src/arla/querystore/postgres_init.go: $(SQL)/02_js.sql $(wildcard $(SQL)/*.sql)
 all: bin/arla
 
 release: build
-	docker push arla/10k
+	docker push $(IMAGE)
 
 clean:
 	rm -f bin/arla
 	rm -f src/arla/querystore/postgres_init.go
 	rm -f $(SQL)/02_js.sql
 	rm -f $(JS)/graphql.js
+	$(DELETE) -rf src/code.google.com/ src/github.com/ src/golang.org/
+	docker rmi -f $(IMAGE) 2>/dev/null || true
+
 
 test: all
 	$(GO) test -v arla/querystore
