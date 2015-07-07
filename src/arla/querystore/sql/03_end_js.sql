@@ -14,20 +14,47 @@ CREATE OR REPLACE FUNCTION arla_fire_trigger() RETURNS trigger AS $$
 $$ LANGUAGE "plv8";
 
 
--- execute an action
-CREATE OR REPLACE FUNCTION arla_exec(viewer uuid, name text, args json) RETURNS json AS $$
-	return JSON.stringify(plv8.arla.exec(viewer, name, args, false));
+-- execute a mutation
+CREATE OR REPLACE FUNCTION arla_exec(name text, t json, args json) RETURNS json AS $$
+	try {
+		return JSON.stringify(plv8.arla.exec(name, t, args, false));
+	} catch (e) {
+		plv8.arla.throwError(e);
+	}
 $$ LANGUAGE "plv8";
 
-CREATE OR REPLACE FUNCTION arla_exec(viewer uuid, name text, args json, replay boolean) RETURNS json AS $$
-	return JSON.stringify(plv8.arla.exec(viewer, name, args, replay));
-$$ LANGUAGE "plv8";
-
+-- execute a mutation using a json representation of the mutation
 CREATE OR REPLACE FUNCTION arla_replay(mutation json) RETURNS boolean AS $$
-	return plv8.arla.replay(mutation);
+	try {
+		return plv8.arla.replay(mutation);
+	} catch (e) {
+		plv8.arla.throwError(e);
+	}
 $$ LANGUAGE "plv8";
 
 -- use graphql to execute a query
-CREATE OR REPLACE FUNCTION arla_query(viewer uuid, t text) RETURNS json AS $$
-	return JSON.stringify(plv8.arla.query(viewer, t));
+CREATE OR REPLACE FUNCTION arla_query(t json, q text) RETURNS json AS $$
+	try {
+		return JSON.stringify(plv8.arla.query(t, q));
+	} catch (e) {
+		plv8.arla.throwError(e);
+	}
+$$ LANGUAGE "plv8";
+
+-- run the authentication func
+CREATE OR REPLACE FUNCTION arla_authenticate(vals json) RETURNS json AS $$
+	try {
+		return JSON.stringify(plv8.arla.authenticate(vals));
+	} catch (e) {
+		plv8.arla.throwError(e);
+	}
+$$ LANGUAGE "plv8";
+
+-- run the registration transformation func
+CREATE OR REPLACE FUNCTION arla_register(vals json) RETURNS json AS $$
+	try {
+		return JSON.stringify(plv8.arla.register(vals));
+	} catch (e) {
+		plv8.arla.throwError(e);
+	}
 $$ LANGUAGE "plv8";

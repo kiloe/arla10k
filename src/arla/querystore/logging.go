@@ -53,6 +53,7 @@ func (ll logLevel) Fprintln(w io.Writer, args ...interface{}) (n int, err error)
 // to the given writer
 type LogFormatter struct {
 	Level logLevel
+	src   *string
 	io.Writer
 }
 
@@ -65,35 +66,35 @@ func NewLogFormatter(w io.Writer) *LogFormatter {
 		var level logLevel
 		for scanner.Scan() {
 			var line string
-			s := strings.TrimSpace(scanner.Text())
+			s := strings.Replace(scanner.Text(), "NOTICE:", "", 1)
 			ss := strings.SplitN(s, ":", 2)
 			if len(ss) < 2 {
 				line = s
 			} else {
-				line = strings.TrimSpace(ss[1])
-				switch ss[0] {
+				line = ss[1]
+				switch strings.TrimSpace(ss[0]) {
 				case "DEBUG":
 					level = DEBUG
 				case "INFO":
 					level = INFO
 				case "LOG":
 					// we want to re-interupt some lines as debug
-					if strings.HasPrefix(line, "statement:") == true {
+					if strings.Contains(line, "statement:") == true {
 						level = DEBUG
-					} else if strings.HasPrefix(line, "execute <unnamed>:") == true {
+					} else if strings.Contains(line, "execute <unnamed>:") == true {
 						level = DEBUG
 					} else {
 						level = LOG
 					}
-				case "WARN":
+				case "WARN", "WARNING":
 					level = WARN
 				case "ERROR":
 					level = ERROR
 				case "DETAIL":
 					if strings.Contains(line, "plv8_init() LINE") {
-						level = DEBUG
-					} else {
 						level = ERROR
+					} else {
+						level = DEBUG
 					}
 				case "FATAL":
 					level = ERROR
@@ -101,17 +102,17 @@ func NewLogFormatter(w io.Writer) *LogFormatter {
 					line = s
 				}
 			}
-			if level == ERROR {
+			if level == ERROR && log.src != nil {
 				// try to extract better info about the error
-				var plv8err = regexp.MustCompile(`plv8_init:(\d+):(\d+)`)
+				var plv8err = regexp.MustCompile(`LINE\s+(\d+):`)
 				if plv8err.MatchString(line) {
 					if lineNo, err := strconv.Atoi(plv8err.FindStringSubmatch(line)[1]); err == nil {
 						// add offset to the plv8_init function
-						lineNo += 3
+						lineNo += 4
 						// build context
-						amt := 5
+						amt := 8
 						var buf bytes.Buffer
-						src := strings.Split(postgresInitScript, "\n")
+						src := strings.Split(*log.src, "\n")
 						start := lineNo - amt
 						if start < 0 {
 							start = 0
@@ -121,17 +122,19 @@ func NewLogFormatter(w io.Writer) *LogFormatter {
 							end = len(src) - 1
 						}
 						for i := start; i < end; i++ {
-							col := ansi.LightBlack
+							xtra := ""
+							col := ansi.White
 							if i == lineNo {
-								col = ansi.Red
+								col = ansi.LightWhite
+								xtra = fmt.Sprint(ansi.Reset, ansi.Red, "<--- something wrong here", ansi.Reset)
 							}
-							fmt.Fprintln(&buf, ansi.Reset, col, src[i], ansi.Reset)
+							fmt.Fprintln(&buf, ansi.Reset, col, src[i], ansi.Reset, xtra)
 						}
-						line = fmt.Sprintf("%s\n%s", line, buf.String())
+						line = buf.String()
 					}
 				}
 			}
-			if log.Level <= level {
+			if level >= log.Level {
 				level.Fprintln(w, line)
 			}
 		}

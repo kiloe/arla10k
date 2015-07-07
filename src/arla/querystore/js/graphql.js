@@ -964,7 +964,9 @@ module.exports = (function() {
     	  }, {});
     	}
     	function expression(e, props){
-
+    		if(!e[0][0]){
+    throw 'invalid name';
+    }
     	  var o = {
     		kind: 'edge',
     		name: e[0][0],

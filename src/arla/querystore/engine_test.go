@@ -14,7 +14,8 @@ var qs Engine
 func TestMain(m *testing.M) {
 	var err error
 	qs, err = New(&Config{
-		Path: "/app/test-app/index.js",
+		Path:     "/app/test-app/index.js",
+		LogLevel: INFO,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -26,10 +27,9 @@ func TestMain(m *testing.M) {
 
 func TestMutate(t *testing.T) {
 	m := &schema.Mutation{
-		ID:     schema.TimeUUID(),
-		UserID: schema.TimeUUID(),
-		Name:   "exampleOp",
-		Args:   []interface{}{1, 2, 3},
+		ID:   schema.TimeUUID(),
+		Name: "exampleOp",
+		Args: []interface{}{1, 2, 3},
 	}
 	err := qs.Mutate(m)
 	if err != nil {
@@ -38,9 +38,8 @@ func TestMutate(t *testing.T) {
 }
 
 func TestQuery(t *testing.T) {
-	id := schema.TimeUUID()
 	var buf bytes.Buffer
-	err := qs.Query(id, `
+	err := qs.Query(nil, `
     oneToTen() {
 
 		}

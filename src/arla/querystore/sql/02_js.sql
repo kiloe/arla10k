@@ -1012,7 +1012,9 @@ module.exports = (function () {
       }, {});
     }
     function expression(e, props) {
-
+      if (!e[0][0]) {
+        throw "invalid name";
+      }
       var o = {
         kind: "edge",
         name: e[0][0],
@@ -1216,9 +1218,8 @@ var _graphql2 = _interopRequireDefault(_graphql);
 	}
 
 	var PARENT_MATCH = /\$this/g;
-	var VIEWER_MATCH = /\$identity/g;
 
-	function gqlToSql(viewer, _ref2, _ref3, parent) {
+	function gqlToSql(token, _ref2, _ref3, parent) {
 		var name = _ref2.name;
 		var properties = _ref2.properties;
 		var edges = _ref2.edges;
@@ -1226,6 +1227,7 @@ var _graphql2 = _interopRequireDefault(_graphql);
 		var props = _ref3.props;
 		var filters = _ref3.filters;
 		var i = arguments[4] === undefined ? 0 : arguments[4];
+		var pl = arguments[5] === undefined ? 0 : arguments[5];
 
 		var cols = Object.keys(props || {}).map(function (k) {
 			var o = props[k];
@@ -1242,13 +1244,27 @@ var _graphql2 = _interopRequireDefault(_graphql);
 					if (!call) {
 						throw 'no such edge ' + k + ' for ' + name;
 					}
-					var edge = call.apply(undefined, _toConsumableArray(o.args));
+					var edge = call.apply(token, o.args);
 					if (!edge.query) {
 						throw 'missing query for edge call ' + k + ' on ' + name;
 					}
 					var sql = edge.query;
+					if (Array.isArray(sql)) {
+						sql = sql[0].replace(/\$(\d+)/, function (match, ns) {
+							var n = parseInt(ns, 10);
+							if (n <= 0) {
+								throw 'invalid placeholder name: $' + ns;
+							}
+							if (sql.length - 1 < n) {
+								throw 'no variable for placeholder: $' + ns;
+							}
+							return plv8.quote_literal(sql[n]);
+						});
+					}
+					if (!sql) {
+						throw 'no query sql returned from edge call: ' + k + ' on ' + name;
+					}
 					// Replace special variables
-					sql = sql.replace(VIEWER_MATCH, plv8.quote_literal(viewer));
 					sql = sql.replace(PARENT_MATCH, function (match) {
 						if (!parent) {
 							throw 'Cannot use $this table replacement on root calls';
@@ -1264,7 +1280,7 @@ var _graphql2 = _interopRequireDefault(_graphql);
 					if (!table) {
 						throw 'unknown return type ' + type + ' for edge call ' + k + ' on ' + name;
 					}
-					return '\n\t\t\t\t\t(with\n\t\t\t\t\t\t' + q + ' as ( ' + sql + ' ),\n\t\t\t\t\t\t' + x + ' as ( ' + gqlToSql(viewer, table, o, q, ++i) + ' from ' + q + ' )\n\t\t\t\t\t\tselect ' + jsonfn + '(' + x + '.*) from ' + x + '\n\t\t\t\t\t) as ' + k + '\n\t\t\t\t';
+					return '\n\t\t\t\t\t(with\n\t\t\t\t\t\t' + q + ' as ( ' + sql + ' ),\n\t\t\t\t\t\t' + x + ' as ( ' + gqlToSql(token, table, o, q, ++i) + ' from ' + q + ' )\n\t\t\t\t\t\tselect ' + jsonfn + '(' + x + '.*) from ' + x + '\n\t\t\t\t\t) as ' + k + '\n\t\t\t\t';
 				default:
 					throw 'unknown property type: ' + o.kind;
 			}
@@ -1295,15 +1311,14 @@ var _graphql2 = _interopRequireDefault(_graphql);
 		return e.record;
 	};
 
-	arla.replay = function (mutation) {
-		arla.exec(mutation.ID, mutation.Name, mutation.Args, true);
+	arla.replay = function (m) {
+		arla.exec(m.Name, m.Token, m.Args);
 		return true;
 	};
 
-	arla.exec = function (viewer, name, args, replay) {
-		if (name == 'resolver') {
-			throw 'no such action resolver'; // HACK
-		}
+	arla.exec = function (name, token, args) {
+		var _db;
+
 		var fn = actions[name];
 		if (!fn) {
 			if (/^[a-zA-Z0-9_]+$/.test(name)) {
@@ -1312,49 +1327,35 @@ var _graphql2 = _interopRequireDefault(_graphql);
 				throw 'invalid action';
 			}
 		}
-		try {
-			var _db;
-
-			console.debug('action ' + name + ' given', args);
-			var queryArgs = fn.apply(undefined, _toConsumableArray(args));
-			if (!queryArgs) {
-				console.debug('action ' + name + ' was a noop');
-				return [];
-			}
-			console.debug('action ' + name + ' returned', queryArgs);
-			if (!Array.isArray(queryArgs)) {
-				queryArgs = [queryArgs];
-			}
-			// ensure first arg is valid
-			if (typeof queryArgs[0] != 'string') {
-				throw 'invalid response from action. should be: [sqlstring, ...args]';
-			}
-			// replace magic $viewer variable
-			queryArgs[0] = queryArgs[0].replace(VIEWER_MATCH, plv8.quote_literal(viewer));
-			// run
-			return (_db = db).query.apply(_db, _toConsumableArray(queryArgs));
-		} catch (err) {
-			if (!replay) {
-				throw err;
-			}
-			if (!actions.resolver) {
-				console.debug('There is no \'resolver\' function declared');
-				throw err;
-			}
-			var res = actions.resolver(err, name, args, actions);
-			console.debug('action', name, args, 'initially failed, but was resolved');
-			return res;
+		// exec the mutation func
+		console.debug('action ' + name + ' given', args);
+		var queryArgs = fn.apply(token, args);
+		if (!queryArgs) {
+			console.debug('action ' + name + ' was a noop');
+			return [];
 		}
+		console.debug('action ' + name + ' returned', queryArgs);
+		if (!Array.isArray(queryArgs)) {
+			queryArgs = [queryArgs];
+		}
+		// ensure first arg is valid
+		if (typeof queryArgs[0] != 'string') {
+			throw 'invalid response from action. should be: [sqlstring, ...args]';
+		}
+		// run the query returned from the mutation func
+		return (_db = db).query.apply(_db, _toConsumableArray(queryArgs));
 	};
 
-	arla.query = function (viewer, query) {
+	arla.query = function (token, query) {
+		if (!query) {
+			throw new SyntaxError('arla_query: query text cannot be null');
+		}
 		query = 'root(){ ' + query + ' }';
 		try {
-			console.debug('QUERY:', viewer, query);
+			console.debug('QUERY:', token, query);
 			var ast = _graphql2['default'].parse(query);
-			//console.debug("AST:", ast);
-			var sql = gqlToSql(viewer, schema.root, ast[0]);
-			//console.debug(`SQL:`, sql);
+			console.debug('AST:', ast);
+			var sql = gqlToSql(token, schema.root, ast[0]);
 			var res = db.query(sql)[0];
 			console.debug('RESULT', res);
 			return res;
@@ -1368,33 +1369,24 @@ var _graphql2 = _interopRequireDefault(_graphql);
 		}
 	};
 
+	arla.authenticate = function (values) {
+		var res = db.query.apply(db, arla.cfg.authenticate(values));
+		if (res.length < 1) {
+			throw new Error('unauthorized');
+		}
+		return res[0];
+	};
+
+	arla.register = function (values) {
+		return arla.cfg.register(values);
+	};
+
 	arla.init = function () {
 		try {
 			// build schema
 			ddl.forEach(function (stmt) {
 				db.query(stmt);
 			});
-			// Only options defined here are allowed
-			var opts = {
-				logLevel: console.INFO,
-				actions: []
-			};
-			for (var k in opts) {
-				db.query('\n\t\t\t\t\tinsert into arla_config (key,value) values ($1::text, $2::json)\n\t\t\t\t', k, JSON.stringify(opts[k]));
-			}
-			// evaluate other config options
-			for (var k in arla.cfg) {
-				switch (k) {
-					case 'schema':
-						break;
-					default:
-						if (opts[k]) {
-							db.query('\n\t\t\t\t\t\t\tupdate arla_config set value = $1 where key = $2\n\t\t\t\t\t\t', arla.cfg[k], k);
-						} else {
-							console.warn('ignoring invalid config option:', k);
-						}
-				}
-			}
 		} catch (e) {
 			arla.throwError(e);
 		}
@@ -1414,27 +1406,31 @@ var _graphql2 = _interopRequireDefault(_graphql);
 			action(name, cfg.actions[name]);
 		});
 		cfg.actions = actionNames;
-		// setup the config table
-		define('arla_config', {
-			properties: {
-				key: { type: 'text', unique: true },
-				value: { type: 'json' }
-			},
-			afterChange: function afterChange(_ref4) {
-				var key = _ref4.key;
-				var value = _ref4.value;
-
-				switch (key.toLowerCase()) {
-					case 'loglevel':
-						console.logLevel = value;
-						break;
-					default:
-						break;
-				}
-			}
-		});
 		// store cfg for later
 		arla.cfg = cfg;
+		// validate some cfg options
+		if (!arla.cfg.authenticate) {
+			throw 'missing required "authenticate" function';
+		}
+		if (!arla.cfg.register) {
+			throw 'missing required "register" function';
+		}
+		// evaluate other config options
+		for (var k in arla.cfg) {
+			switch (k) {
+				case 'schema':
+				case 'actions':
+				case 'authenticate':
+				case 'register':
+					break;
+				case 'logLevel':
+					plv8.elog(NOTICE, 'setting logLevel:' + arla.cfg[k]);
+					console.logLevel = arla.cfg[k];
+					break;
+				default:
+					console.warn('ignoring invalid config option:', k);
+			}
+		}
 	};
 
 	arla.throwError = function (e) {

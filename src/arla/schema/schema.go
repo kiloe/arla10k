@@ -8,17 +8,20 @@ import (
 // Mutation is an operation submitted to the application (most likely by a user)
 // that alters the state of the querystore. Each mutation has a unique ID
 // (which is a UUID v1 - therefore also has a rough timestamp encoded). Each
-// mutation also contains the ID of the user who submitted the mutation.
+// mutation also contains the ID of the user/account that submitted the mutation.
 type Mutation struct {
-	ID     UUID
-	UserID UUID
-	Name   string
-	Args   []interface{}
-	Status string
+	ID     UUID          `json:",omitempty"`
+	Token  Token         `json:",omitempty"`
+	Name   string        `json:",omitempty"`
+	Args   []interface{} `json:",omitempty"`
+	Status string        `json:",omitempty"`
 }
 
 // Arg is an argument for a mutation action.
 type Arg interface{}
+
+// Token contains the validated claims that a user/session has.
+type Token map[string]string
 
 // SafeError is an error that has a way to return a public-facing error message.
 // The perpose is to prevent any potentially sensitive infomation from leaking

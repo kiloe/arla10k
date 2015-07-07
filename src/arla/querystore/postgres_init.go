@@ -39,6 +39,85 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 		});
 	}
 
+	// Production steps of ECMA-262, Edition 6, 22.1.2.1
+	// Reference: https://people.mozilla.org/~jorendorff/es6-draft.html#sec-array.from
+	if (!Array.from) {
+	  Array.from = (function () {
+	    var toStr = Object.prototype.toString;
+	    var isCallable = function (fn) {
+	      return typeof fn === 'function' || toStr.call(fn) === '[object Function]';
+	    };
+	    var toInteger = function (value) {
+	      var number = Number(value);
+	      if (isNaN(number)) { return 0; }
+	      if (number === 0 || !isFinite(number)) { return number; }
+	      return (number > 0 ? 1 : -1) * Math.floor(Math.abs(number));
+	    };
+	    var maxSafeInteger = Math.pow(2, 53) - 1;
+	    var toLength = function (value) {
+	      var len = toInteger(value);
+	      return Math.min(Math.max(len, 0), maxSafeInteger);
+	    };
+
+	    // The length property of the from method is 1.
+	    return function from(arrayLike/*, mapFn, thisArg */) {
+	      // 1. Let C be the this value.
+	      var C = this;
+
+	      // 2. Let items be ToObject(arrayLike).
+	      var items = Object(arrayLike);
+
+	      // 3. ReturnIfAbrupt(items).
+	      if (arrayLike == null) {
+	        throw new TypeError("Array.from requires an array-like object - not null or undefined");
+	      }
+
+	      // 4. If mapfn is undefined, then let mapping be false.
+	      var mapFn = arguments.length > 1 ? arguments[1] : void undefined;
+	      var T;
+	      if (typeof mapFn !== 'undefined') {
+	        // 5. else
+	        // 5. a If IsCallable(mapfn) is false, throw a TypeError exception.
+	        if (!isCallable(mapFn)) {
+	          throw new TypeError('Array.from: when provided, the second argument must be a function');
+	        }
+
+	        // 5. b. If thisArg was supplied, let T be thisArg; else let T be undefined.
+	        if (arguments.length > 2) {
+	          T = arguments[2];
+	        }
+	      }
+
+	      // 10. Let lenValue be Get(items, "length").
+	      // 11. Let len be ToLength(lenValue).
+	      var len = toLength(items.length);
+
+	      // 13. If IsConstructor(C) is true, then
+	      // 13. a. Let A be the result of calling the [[Construct]] internal method of C with an argument list containing the single item len.
+	      // 14. a. Else, Let A be ArrayCreate(len).
+	      var A = isCallable(C) ? Object(new C(len)) : new Array(len);
+
+	      // 16. Let k be 0.
+	      var k = 0;
+	      // 17. Repeat, while k < len… (also steps a - h)
+	      var kValue;
+	      while (k < len) {
+	        kValue = items[k];
+	        if (mapFn) {
+	          A[k] = typeof T === 'undefined' ? mapFn(kValue, k) : mapFn.call(T, kValue, k);
+	        } else {
+	          A[k] = kValue;
+	        }
+	        k += 1;
+	      }
+	      // 18. Let putStatus be Put(A, "length", len, true).
+	      A.length = len;
+	      // 20. Return A.
+	      return A;
+	    };
+	  }());
+	}
+
 	// arla global
 	var arla = {};
 	plv8.arla = arla;
@@ -46,14 +125,18 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 	// add console logging
 	var console = (function(console){
 
-		console.ALL = 0;
-		console.DEBUG = 1;
-		console.INFO = 2;
-		console.LOG = 3;
-		console.WARN = 4;
-		console.ERROR = 5;
-		console.logLevel = console.INFO;
+		console.UNKNOWN = 0;
+		console.ALL = 1;
+		console.DEBUG = 2;
+		console.INFO = 3;
+		console.LOG = 4;
+		console.WARN = 5;
+		console.ERROR = 6;
+		console.logLevel = console.ALL;
 		function logger(level, pglevel, tag) {
+			if( level < console.logLevel ){
+				return;
+			}
 			var args = [];
 			for (var i = 2; i < arguments.length; i++) {
 				args.push(arguments[i]);
@@ -65,15 +148,13 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 				return msg;
 			}).join(' ');
 			(msg || '').split(/\n/g).forEach(function(line){
-				if( console.logLevel <= level ){
-					plv8.elog(pglevel, line);
-				}
+				plv8.elog(pglevel, line);
 			})
 		}
 		console.debug = logger.bind(console, console.DEBUG, NOTICE, "DEBUG:");
 		console.info  = logger.bind(console, console.INFO, NOTICE, "INFO:");
 		console.log   = logger.bind(console, console.LOG, NOTICE, "LOG:");
-		console.warn  = logger.bind(console, console.WARN, WARNING, "WARN:");
+		console.warn  = logger.bind(console, console.WARN, NOTICE, "WARN:");
 		console.error = logger.bind(console, console.ERROR, NOTICE, "ERROR:");
 		return console;
 	})({});
@@ -90,6 +171,24 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 		}
 		db.transaction = plv8.subtransaction;
 		return db;
+	})({});
+
+	// expose a password hashing function
+	var pgcrypto = (function(pgcrypto){
+		pgcrypto.crypt = function(pw){
+			if( !pw ){
+				throw new Error('must supply a password to crypt');
+			}
+			var res = db.query("select crypt($1, gen_salt('bf')) as v", pw);
+			if( res.length < 1 ){
+				throw new Error('invalid response from crypt');
+			}
+			if( !res[0].v ){
+				throw new Error('unexpected response from crypt');
+			}
+			return res[0].v;
+		}
+		return pgcrypto;
 	})({});
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 "use strict";
@@ -1105,7 +1204,9 @@ module.exports = (function () {
       }, {});
     }
     function expression(e, props) {
-
+      if (!e[0][0]) {
+        throw "invalid name";
+      }
       var o = {
         kind: "edge",
         name: e[0][0],
@@ -1309,9 +1410,8 @@ var _graphql2 = _interopRequireDefault(_graphql);
 	}
 
 	var PARENT_MATCH = /\$this/g;
-	var VIEWER_MATCH = /\$identity/g;
 
-	function gqlToSql(viewer, _ref2, _ref3, parent) {
+	function gqlToSql(token, _ref2, _ref3, parent) {
 		var name = _ref2.name;
 		var properties = _ref2.properties;
 		var edges = _ref2.edges;
@@ -1319,6 +1419,7 @@ var _graphql2 = _interopRequireDefault(_graphql);
 		var props = _ref3.props;
 		var filters = _ref3.filters;
 		var i = arguments[4] === undefined ? 0 : arguments[4];
+		var pl = arguments[5] === undefined ? 0 : arguments[5];
 
 		var cols = Object.keys(props || {}).map(function (k) {
 			var o = props[k];
@@ -1335,13 +1436,27 @@ var _graphql2 = _interopRequireDefault(_graphql);
 					if (!call) {
 						throw 'no such edge ' + k + ' for ' + name;
 					}
-					var edge = call.apply(undefined, _toConsumableArray(o.args));
+					var edge = call.apply(token, o.args);
 					if (!edge.query) {
 						throw 'missing query for edge call ' + k + ' on ' + name;
 					}
 					var sql = edge.query;
+					if (Array.isArray(sql)) {
+						sql = sql[0].replace(/\$(\d+)/, function (match, ns) {
+							var n = parseInt(ns, 10);
+							if (n <= 0) {
+								throw 'invalid placeholder name: $' + ns;
+							}
+							if (sql.length - 1 < n) {
+								throw 'no variable for placeholder: $' + ns;
+							}
+							return plv8.quote_literal(sql[n]);
+						});
+					}
+					if (!sql) {
+						throw 'no query sql returned from edge call: ' + k + ' on ' + name;
+					}
 					// Replace special variables
-					sql = sql.replace(VIEWER_MATCH, plv8.quote_literal(viewer));
 					sql = sql.replace(PARENT_MATCH, function (match) {
 						if (!parent) {
 							throw 'Cannot use $this table replacement on root calls';
@@ -1357,7 +1472,7 @@ var _graphql2 = _interopRequireDefault(_graphql);
 					if (!table) {
 						throw 'unknown return type ' + type + ' for edge call ' + k + ' on ' + name;
 					}
-					return '\n\t\t\t\t\t(with\n\t\t\t\t\t\t' + q + ' as ( ' + sql + ' ),\n\t\t\t\t\t\t' + x + ' as ( ' + gqlToSql(viewer, table, o, q, ++i) + ' from ' + q + ' )\n\t\t\t\t\t\tselect ' + jsonfn + '(' + x + '.*) from ' + x + '\n\t\t\t\t\t) as ' + k + '\n\t\t\t\t';
+					return '\n\t\t\t\t\t(with\n\t\t\t\t\t\t' + q + ' as ( ' + sql + ' ),\n\t\t\t\t\t\t' + x + ' as ( ' + gqlToSql(token, table, o, q, ++i) + ' from ' + q + ' )\n\t\t\t\t\t\tselect ' + jsonfn + '(' + x + '.*) from ' + x + '\n\t\t\t\t\t) as ' + k + '\n\t\t\t\t';
 				default:
 					throw 'unknown property type: ' + o.kind;
 			}
@@ -1388,15 +1503,14 @@ var _graphql2 = _interopRequireDefault(_graphql);
 		return e.record;
 	};
 
-	arla.replay = function (mutation) {
-		arla.exec(mutation.ID, mutation.Name, mutation.Args, true);
+	arla.replay = function (m) {
+		arla.exec(m.Name, m.Token, m.Args);
 		return true;
 	};
 
-	arla.exec = function (viewer, name, args, replay) {
-		if (name == 'resolver') {
-			throw 'no such action resolver'; // HACK
-		}
+	arla.exec = function (name, token, args) {
+		var _db;
+
 		var fn = actions[name];
 		if (!fn) {
 			if (/^[a-zA-Z0-9_]+$/.test(name)) {
@@ -1405,49 +1519,35 @@ var _graphql2 = _interopRequireDefault(_graphql);
 				throw 'invalid action';
 			}
 		}
-		try {
-			var _db;
-
-			console.debug('action ' + name + ' given', args);
-			var queryArgs = fn.apply(undefined, _toConsumableArray(args));
-			if (!queryArgs) {
-				console.debug('action ' + name + ' was a noop');
-				return [];
-			}
-			console.debug('action ' + name + ' returned', queryArgs);
-			if (!Array.isArray(queryArgs)) {
-				queryArgs = [queryArgs];
-			}
-			// ensure first arg is valid
-			if (typeof queryArgs[0] != 'string') {
-				throw 'invalid response from action. should be: [sqlstring, ...args]';
-			}
-			// replace magic $viewer variable
-			queryArgs[0] = queryArgs[0].replace(VIEWER_MATCH, plv8.quote_literal(viewer));
-			// run
-			return (_db = db).query.apply(_db, _toConsumableArray(queryArgs));
-		} catch (err) {
-			if (!replay) {
-				throw err;
-			}
-			if (!actions.resolver) {
-				console.debug('There is no \'resolver\' function declared');
-				throw err;
-			}
-			var res = actions.resolver(err, name, args, actions);
-			console.debug('action', name, args, 'initially failed, but was resolved');
-			return res;
+		// exec the mutation func
+		console.debug('action ' + name + ' given', args);
+		var queryArgs = fn.apply(token, args);
+		if (!queryArgs) {
+			console.debug('action ' + name + ' was a noop');
+			return [];
 		}
+		console.debug('action ' + name + ' returned', queryArgs);
+		if (!Array.isArray(queryArgs)) {
+			queryArgs = [queryArgs];
+		}
+		// ensure first arg is valid
+		if (typeof queryArgs[0] != 'string') {
+			throw 'invalid response from action. should be: [sqlstring, ...args]';
+		}
+		// run the query returned from the mutation func
+		return (_db = db).query.apply(_db, _toConsumableArray(queryArgs));
 	};
 
-	arla.query = function (viewer, query) {
+	arla.query = function (token, query) {
+		if (!query) {
+			throw new SyntaxError('arla_query: query text cannot be null');
+		}
 		query = 'root(){ ' + query + ' }';
 		try {
-			console.debug('QUERY:', viewer, query);
+			console.debug('QUERY:', token, query);
 			var ast = _graphql2['default'].parse(query);
-			//console.debug("AST:", ast);
-			var sql = gqlToSql(viewer, schema.root, ast[0]);
-			//console.debug('SQL:', sql);
+			console.debug('AST:', ast);
+			var sql = gqlToSql(token, schema.root, ast[0]);
 			var res = db.query(sql)[0];
 			console.debug('RESULT', res);
 			return res;
@@ -1461,33 +1561,24 @@ var _graphql2 = _interopRequireDefault(_graphql);
 		}
 	};
 
+	arla.authenticate = function (values) {
+		var res = db.query.apply(db, arla.cfg.authenticate(values));
+		if (res.length < 1) {
+			throw new Error('unauthorized');
+		}
+		return res[0];
+	};
+
+	arla.register = function (values) {
+		return arla.cfg.register(values);
+	};
+
 	arla.init = function () {
 		try {
 			// build schema
 			ddl.forEach(function (stmt) {
 				db.query(stmt);
 			});
-			// Only options defined here are allowed
-			var opts = {
-				logLevel: console.INFO,
-				actions: []
-			};
-			for (var k in opts) {
-				db.query('\n\t\t\t\t\tinsert into arla_config (key,value) values ($1::text, $2::json)\n\t\t\t\t', k, JSON.stringify(opts[k]));
-			}
-			// evaluate other config options
-			for (var k in arla.cfg) {
-				switch (k) {
-					case 'schema':
-						break;
-					default:
-						if (opts[k]) {
-							db.query('\n\t\t\t\t\t\t\tupdate arla_config set value = $1 where key = $2\n\t\t\t\t\t\t', arla.cfg[k], k);
-						} else {
-							console.warn('ignoring invalid config option:', k);
-						}
-				}
-			}
 		} catch (e) {
 			arla.throwError(e);
 		}
@@ -1507,27 +1598,31 @@ var _graphql2 = _interopRequireDefault(_graphql);
 			action(name, cfg.actions[name]);
 		});
 		cfg.actions = actionNames;
-		// setup the config table
-		define('arla_config', {
-			properties: {
-				key: { type: 'text', unique: true },
-				value: { type: 'json' }
-			},
-			afterChange: function afterChange(_ref4) {
-				var key = _ref4.key;
-				var value = _ref4.value;
-
-				switch (key.toLowerCase()) {
-					case 'loglevel':
-						console.logLevel = value;
-						break;
-					default:
-						break;
-				}
-			}
-		});
 		// store cfg for later
 		arla.cfg = cfg;
+		// validate some cfg options
+		if (!arla.cfg.authenticate) {
+			throw 'missing required "authenticate" function';
+		}
+		if (!arla.cfg.register) {
+			throw 'missing required "register" function';
+		}
+		// evaluate other config options
+		for (var k in arla.cfg) {
+			switch (k) {
+				case 'schema':
+				case 'actions':
+				case 'authenticate':
+				case 'register':
+					break;
+				case 'logLevel':
+					plv8.elog(NOTICE, 'setting logLevel:' + arla.cfg[k]);
+					console.logLevel = arla.cfg[k];
+					break;
+				default:
+					console.warn('ignoring invalid config option:', k);
+			}
+		}
 	};
 
 	arla.throwError = function (e) {
@@ -1559,22 +1654,49 @@ CREATE OR REPLACE FUNCTION arla_fire_trigger() RETURNS trigger AS $$
 $$ LANGUAGE "plv8";
 
 
--- execute an action
-CREATE OR REPLACE FUNCTION arla_exec(viewer uuid, name text, args json) RETURNS json AS $$
-	return JSON.stringify(plv8.arla.exec(viewer, name, args, false));
+-- execute a mutation
+CREATE OR REPLACE FUNCTION arla_exec(name text, t json, args json) RETURNS json AS $$
+	try {
+		return JSON.stringify(plv8.arla.exec(name, t, args, false));
+	} catch (e) {
+		plv8.arla.throwError(e);
+	}
 $$ LANGUAGE "plv8";
 
-CREATE OR REPLACE FUNCTION arla_exec(viewer uuid, name text, args json, replay boolean) RETURNS json AS $$
-	return JSON.stringify(plv8.arla.exec(viewer, name, args, replay));
-$$ LANGUAGE "plv8";
-
+-- execute a mutation using a json representation of the mutation
 CREATE OR REPLACE FUNCTION arla_replay(mutation json) RETURNS boolean AS $$
-	return plv8.arla.replay(mutation);
+	try {
+		return plv8.arla.replay(mutation);
+	} catch (e) {
+		plv8.arla.throwError(e);
+	}
 $$ LANGUAGE "plv8";
 
 -- use graphql to execute a query
-CREATE OR REPLACE FUNCTION arla_query(viewer uuid, t text) RETURNS json AS $$
-	return JSON.stringify(plv8.arla.query(viewer, t));
+CREATE OR REPLACE FUNCTION arla_query(t json, q text) RETURNS json AS $$
+	try {
+		return JSON.stringify(plv8.arla.query(t, q));
+	} catch (e) {
+		plv8.arla.throwError(e);
+	}
+$$ LANGUAGE "plv8";
+
+-- run the authentication func
+CREATE OR REPLACE FUNCTION arla_authenticate(vals json) RETURNS json AS $$
+	try {
+		return JSON.stringify(plv8.arla.authenticate(vals));
+	} catch (e) {
+		plv8.arla.throwError(e);
+	}
+$$ LANGUAGE "plv8";
+
+-- run the registration transformation func
+CREATE OR REPLACE FUNCTION arla_register(vals json) RETURNS json AS $$
+	try {
+		return JSON.stringify(plv8.arla.register(vals));
+	} catch (e) {
+		plv8.arla.throwError(e);
+	}
 $$ LANGUAGE "plv8";
 
 -- since(x) === age(now(), x)

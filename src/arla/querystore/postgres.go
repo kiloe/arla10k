@@ -102,27 +102,60 @@ func (p *postgres) Stop() error {
 
 // Mutate applies a schema.Mutation to the data
 func (p *postgres) Mutate(m *schema.Mutation) error {
-	if !m.UserID.Valid() {
-		return fmt.Errorf("cannot process mutation without user id")
-	}
 	p.execMu.Lock()
 	defer p.execMu.Unlock()
 	args, err := json.Marshal(m.Args)
 	if err != nil {
 		return err
 	}
-	_, err = p.execConn.Exec("select arla_exec($1::uuid, $2::text, $3::json)", m.UserID, m.Name, string(args))
+	token, err := json.Marshal(m.Token)
+	if err != nil {
+		return err
+	}
+	_, err = p.execConn.Exec("select arla_exec($1::text, $2::json, $3::json)", m.Name, string(token), string(args))
 	return err
 }
 
 // Query executes an Arla query and writes the JSON response into w
-func (p *postgres) Query(uid schema.UUID, query string, w io.Writer) error {
+func (p *postgres) Query(t schema.Token, query string, w io.Writer) error {
 	out := jsonbytes{w: w}
-	r := p.queryPool.QueryRow("select arla_query($1::uuid, $2::text)", uid, query)
+	b, err := json.Marshal(t)
+	if err != nil {
+		return err
+	}
+	r := p.queryPool.QueryRow("select arla_query($1::json, $2::text)", string(b), query)
 	if err := r.Scan(&out); err != nil {
 		return err
 	}
 	return nil
+}
+
+// Authenticate returns the token claims for the given json values
+func (p *postgres) Authenticate(vals string) (schema.Token, error) {
+	var s string
+	r := p.queryPool.QueryRow("select arla_authenticate($1::json)", vals)
+	if err := r.Scan(&s); err != nil {
+		return nil, err
+	}
+	t := make(schema.Token)
+	if err := json.Unmarshal([]byte(s), &t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// Register returns a mutation that will be used to create a user
+func (p *postgres) Register(vals string) (*schema.Mutation, error) {
+	var s string
+	r := p.queryPool.QueryRow("select arla_register($1::json)", vals)
+	if err := r.Scan(&s); err != nil {
+		return nil, err
+	}
+	var m schema.Mutation
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
 }
 
 // Start spawns a postgres instance, configures it using the
@@ -286,6 +319,7 @@ func (p *postgres) init() error {
 	}
 	// compile sql
 	sql := strings.Replace(postgresInitScript, "//CONFIG//", string(js.Bytes()), 1)
+	p.log.src = &sql
 	// exec sql
 	cmd, err = p.command("psql", "-v", "ON_ERROR_STOP=1")
 	if err != nil {

@@ -138,9 +138,8 @@ import gql from "./graphql"
 	}
 
 	var PARENT_MATCH = /\$this/g;
-	var VIEWER_MATCH = /\$identity/g;
 
-	function gqlToSql(viewer, {name, properties, edges}, {args, props, filters}, parent, i = 0){
+	function gqlToSql(token, {name, properties, edges}, {args, props, filters}, parent, i = 0, pl = 0){
 		let cols = Object.keys(props || {}).map(function(k){
 			var o = props[k];
 			switch(o.kind){
@@ -156,13 +155,27 @@ import gql from "./graphql"
 				if( !call ){
 					throw `no such edge ${k} for ${name}`;
 				}
-				let edge = call(...o.args);
+				let edge = call.apply(token, o.args);
 				if( !edge.query ){
 					throw `missing query for edge call ${k} on ${name}`;
 				}
 				let sql = edge.query;
+				if( Array.isArray(sql) ){
+					sql = sql[0].replace(/\$(\d+)/, function(match, ns){
+						let n = parseInt(ns,10);
+						if( n <= 0 ){
+							throw `invalid placeholder name: \$${ns}`;
+						}
+						if( sql.length-1 < n ){
+							throw `no variable for placeholder: \$${ns}`;
+						}
+						return plv8.quote_literal(sql[n]);
+					});
+				}
+				if( !sql ){
+					throw `no query sql returned from edge call: ${k} on ${name}`;
+				}
 				// Replace special variables
-				sql = sql.replace(VIEWER_MATCH, plv8.quote_literal(viewer));
 				sql = sql.replace(PARENT_MATCH, function(match){
 					if( !parent ){
 						throw "Cannot use $this table replacement on root calls";
@@ -186,7 +199,7 @@ import gql from "./graphql"
 				return `
 					(with
 						${q} as ( ${ sql } ),
-						${x} as ( ${gqlToSql(viewer, table, o, q, ++i)} from ${q} )
+						${x} as ( ${gqlToSql(token, table, o, q, ++i)} from ${q} )
 						select ${jsonfn}(${x}.*) from ${x}
 					) as ${k}
 				`;
@@ -220,15 +233,12 @@ import gql from "./graphql"
 		return e.record;
 	};
 
-	arla.replay = function(mutation){
-		arla.exec(mutation.ID, mutation.Name, mutation.Args, true);
+	arla.replay = function(m){
+		arla.exec(m.Name, m.Token, m.Args);
 		return true;
 	};
 
-	arla.exec = function(viewer, name, args, replay){
-		if( name == 'resolver' ){
-			throw "no such action resolver"; // HACK
-		}
+	arla.exec = function(name, token, args){
 		var fn = actions[name];
 		if( !fn ){
 			if( /^[a-zA-Z0-9_]+$/.test(name) ){
@@ -237,47 +247,35 @@ import gql from "./graphql"
 				throw 'invalid action';
 			}
 		}
-		try{
-			console.debug(`action ${name} given`, args);
-			var queryArgs = fn(...args);
-			if( !queryArgs ){
-				console.debug(`action ${name} was a noop`);
-				return [];
-			}
-			console.debug(`action ${name} returned`, queryArgs);
-			if( !Array.isArray(queryArgs) ){
-				queryArgs = [queryArgs];
-			}
-			// ensure first arg is valid
-			if( typeof queryArgs[0] != 'string' ){
-				throw 'invalid response from action. should be: [sqlstring, ...args]';
-			}
-			// replace magic $viewer variable
-			queryArgs[0] = queryArgs[0].replace(VIEWER_MATCH, plv8.quote_literal(viewer));
-			// run
-			return db.query(...queryArgs);
-		}catch(err){
-			if( !replay ){
-				throw err;
-			}
-			if( !actions.resolver ){
-				console.debug(`There is no 'resolver' function declared`);
-				throw err;
-			}
-			var res = actions.resolver(err, name, args, actions);
-			console.debug('action', name, args, 'initially failed, but was resolved')
-			return res;
+		// exec the mutation func
+		console.debug(`action ${name} given`, args);
+		var queryArgs = fn.apply(token, args);
+		if( !queryArgs ){
+			console.debug(`action ${name} was a noop`);
+			return [];
 		}
+		console.debug(`action ${name} returned`, queryArgs);
+		if( !Array.isArray(queryArgs) ){
+			queryArgs = [queryArgs];
+		}
+		// ensure first arg is valid
+		if( typeof queryArgs[0] != 'string' ){
+			throw 'invalid response from action. should be: [sqlstring, ...args]';
+		}
+		// run the query returned from the mutation func
+		return db.query(...queryArgs);
 	};
 
-	arla.query = function(viewer, query){
+	arla.query = function(token, query){
+		if( !query ){
+			throw new SyntaxError('arla_query: query text cannot be null');
+		}
 		query = `root(){ ${query} }`;
 		try{
-			console.debug("QUERY:", viewer, query);
+			console.debug("QUERY:", token, query);
 			let ast = gql.parse(query);
-			//console.debug("AST:", ast);
-			let sql = gqlToSql( viewer, schema.root, ast[0]);
-			//console.debug(`SQL:`, sql);
+			console.debug("AST:", ast);
+			let sql = gqlToSql( token, schema.root, ast[0]);
 			let res = db.query(sql)[0];
 			console.debug("RESULT", res);
 			return res;
@@ -291,37 +289,24 @@ import gql from "./graphql"
 		}
 	};
 
+	arla.authenticate = function(values){
+		var res = db.query.apply(db, arla.cfg.authenticate(values));
+		if( res.length < 1 ){
+			throw new Error('unauthorized');
+		}
+		return res[0];
+	}
+
+	arla.register = function(values){
+		return arla.cfg.register(values);
+	}
+
 	arla.init = function(){
 		try{
 			// build schema
 			ddl.forEach(function(stmt){
 				db.query(stmt);
 			});
-			// Only options defined here are allowed
-			let opts = {
-				logLevel: console.INFO,
-				actions: [],
-			};
-			for( let k in opts ){
-				db.query(`
-					insert into arla_config (key,value) values ($1::text, $2::json)
-				`, k, JSON.stringify(opts[k]));
-			}
-			// evaluate other config options
-			for( let k in arla.cfg ){
-				switch(k){
-				case 'schema':
-					break;
-				default:
-					if( opts[k] ){
-						db.query(`
-							update arla_config set value = $1 where key = $2
-						`, arla.cfg[k], k);
-					} else {
-						console.warn('ignoring invalid config option:',k);
-					}
-				}
-			}
 		}catch(e){
 			arla.throwError(e);
 		}
@@ -341,24 +326,31 @@ import gql from "./graphql"
 			action(name, cfg.actions[name]);
 		});
 		cfg.actions = actionNames;
-		// setup the config table
-		define('arla_config', {
-			properties: {
-				key:   {type: 'text', unique:true},
-				value: {type: 'json'}
-			},
-			afterChange({key, value}){
-				switch(key.toLowerCase()){
-				case 'loglevel':
-					console.logLevel = value;
-					break;
-				default:
-					break;
-				}
-			}
-		});
 		// store cfg for later
 		arla.cfg = cfg;
+		// validate some cfg options
+		if( !arla.cfg.authenticate ){
+			throw 'missing required "authenticate" function';
+		}
+		if( !arla.cfg.register ){
+			throw 'missing required "register" function';
+		}
+		// evaluate other config options
+		for( let k in arla.cfg ){
+			switch(k){
+			case 'schema':
+			case 'actions':
+			case 'authenticate':
+			case 'register':
+				break;
+			case 'logLevel':
+				plv8.elog(NOTICE, "setting logLevel:"+arla.cfg[k]);
+				console.logLevel = arla.cfg[k];
+				break;
+			default:
+				console.warn('ignoring invalid config option:',k);
+			}
+		}
 	}
 
 	arla.throwError = function(e){

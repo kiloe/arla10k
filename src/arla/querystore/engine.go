@@ -12,10 +12,12 @@ type Engine interface {
 	Stop() error
 	Wait() error
 	Mutate(*schema.Mutation) error
-	Query(id schema.UUID, q string, w io.Writer) error
+	Query(t schema.Token, q string, w io.Writer) error
 	NewWriter() (w io.WriteCloser, err error)
 	SetLogLevel(logLevel)
 	GetLogLevel() logLevel
+	Authenticate(string) (schema.Token, error)
+	Register(string) (*schema.Mutation, error)
 }
 
 // Config defines options configuring the query engine
