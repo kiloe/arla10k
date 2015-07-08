@@ -60,5 +60,6 @@ clean:
 test: all
 	$(GO) test -v arla/querystore
 	$(GO) test -v arla/mutationstore
+	$(GO) test -v arla
 
 .PHONY: default build test release clean
