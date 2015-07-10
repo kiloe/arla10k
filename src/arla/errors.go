@@ -1,30 +1,37 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
+	"strings"
 )
+
+import "github.com/jackc/pgx"
 
 // Error type used my HandleFunc
 type Error struct {
 	err     error
 	code    int
-	Message string `json:"message"`
+	Message string `json:"error"`
 }
 
-// Error implements the error interface
 func (e *Error) Error() string {
-	return fmt.Sprintf("%s: %s [%v]", e.Message, e.err.Error(), e.code)
+	return e.err.Error()
 }
 
 // userError wraps an error with a 400 status and filters which messages
 // get seen my the user
 func userError(err error) *Error {
-	return &Error{
+	e := &Error{
 		err:     err,
 		code:    http.StatusBadRequest,
 		Message: "there was a problem processing your request",
 	}
+	if pgerr, ok := err.(pgx.PgError); ok {
+		if strings.HasPrefix(pgerr.Message, "UserError:") {
+			e.Message = strings.Replace(pgerr.Message, "UserError:", "", 1)
+		}
+	}
+	return e
 }
 
 // internalError wraps an error with a 500 status and masks the

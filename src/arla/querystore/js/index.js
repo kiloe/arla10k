@@ -1,5 +1,18 @@
 import gql from "./graphql"
 
+// UserError should be used when you want an error message to
+// be shown to an end user.
+class UserError extends Error {
+  constructor(m) {
+    var err = super(m);
+    Object.assign(this, {
+      name: "UserError",
+      message: err.message,
+      stack: err.stack
+    });
+  }
+}
+
 (function(){
 
 	var listeners = {};
@@ -88,6 +101,9 @@ import gql from "./graphql"
 		alter(`CREATE CONSTRAINT TRIGGER after_trigger AFTER INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('after')`);
 		columns.forEach(function(p){
 			alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(p.name) } ${ col(p) }`);
+			if(p.unique){
+				alter(`CREATE UNIQUE INDEX ${ name }_${ p.name }_unq_idx ON ${ plv8.quote_ident(name) } (${ p.name })`)
+			}
 		})
 		if( klass.indexes ){
 			for(let k in klass.indexes){
@@ -292,7 +308,19 @@ import gql from "./graphql"
 			throw new Error('invalid response from action. should be: [sqlstring, ...args]');
 		}
 		// run the query returned from the mutation func
-		return db.query(...queryArgs);
+		try{
+			return db.query(...queryArgs);
+		}catch(e){
+			if(e.stack){
+				console.debug(e.stack);
+			}
+			if( e.message ){
+				if( (/violates unique constraint/i).test(e.message) ){
+					throw new UserError("violates unique constraint");
+				}
+			}
+			throw e;
+		}
 	};
 
 	arla.query = function(session, query){

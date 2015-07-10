@@ -102,7 +102,7 @@ func hasKey(k string) func(b []byte) error {
 	}
 }
 
-var isError = hasKey("message")
+var isError = hasKey("error")
 var isOK = hasKey("success")
 
 var testCases = []*TC{
@@ -167,6 +167,22 @@ var testCases = []*TC{
 	},
 
 	&TC{
+		Name:   "adding same email address for bob again should fail due to unique prop",
+		Method: POST,
+		URL:    "/exec",
+		User:   bob,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "addEmailAddress",
+				"args": ["bob@bob.com"]
+			}
+		`,
+		ResCode: http.StatusBadRequest,
+		ResFunc: isError,
+	},
+
+	&TC{
 		Name:   "bob should have an email address",
 		Method: POST,
 		URL:    "/query",
@@ -189,6 +205,21 @@ var testCases = []*TC{
 					]
 				}
 			}`,
+	},
+
+	&TC{
+		Name:   "update bob's email address",
+		Method: POST,
+		URL:    "/exec",
+		User:   bob,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "updateEmailAddress",
+				"args": ["bob@bob.com", "bob@gmail.com"]
+			}
+		`,
+		ResFunc: isOK,
 	},
 
 	&TC{
@@ -232,7 +263,7 @@ var testCases = []*TC{
 			{
 				"members": [
 					{"username":"alice", "email_addresses":[]},
-					{"username":"bob", "email_addresses":[{"addr":"bob@bob.com"}]}
+					{"username":"bob", "email_addresses":[{"addr":"bob@gmail.com"}]}
 				]
 			}
 		`,
@@ -254,7 +285,41 @@ var testCases = []*TC{
 	},
 
 	&TC{
-		Name:   "beforeChange hook should have lowercased/trimmed the SHOUTY email",
+		Name:   "beforeChange hook should prevent adding an invalid email for alice",
+		Method: POST,
+		URL:    "/exec",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "addEmailAddress",
+				"args": ["not-an-email"]
+			}
+		`,
+		ResType: ApplicationJSON,
+		ResCode: http.StatusBadRequest,
+		ResFunc: isError,
+	},
+
+	&TC{
+		Name:   "beforeChange hook should prevent updating to an invalid email for alice",
+		Method: POST,
+		URL:    "/exec",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "updateEmailAddress",
+				"args": ["alice@alice.com", "not-an-email"]
+			}
+		`,
+		ResType: ApplicationJSON,
+		ResCode: http.StatusBadRequest,
+		ResFunc: isError,
+	},
+
+	&TC{
+		Name:   "alice should have a single lowercased/trimmed email",
 		Method: POST,
 		URL:    "/query",
 		User:   alice,
@@ -275,24 +340,7 @@ var testCases = []*TC{
 	},
 
 	&TC{
-		Name:   "beforeChange hook should prevent adding an invalid email for alice",
-		Method: POST,
-		URL:    "/exec",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
-			{
-				"name": "addEmailAddress",
-				"args": ["not-an-email"]
-			}
-		`,
-		ResType: ApplicationJSON,
-		ResCode: http.StatusBadRequest,
-		ResFunc: isError,
-	},
-
-	&TC{
-		Name:   "make alice and bob friends",
+		Name:   "alice should be able to make friends with bob",
 		Method: POST,
 		URL:    "/exec",
 		User:   alice,
@@ -304,6 +352,22 @@ var testCases = []*TC{
 			}
 		`,
 		ResFunc: isOK,
+	},
+
+	&TC{
+		Name:   "bob should not be able to make friends with alice due to unique index",
+		Method: POST,
+		URL:    "/exec",
+		User:   bob,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "addFriend",
+				"args": ["` + alice.ID.String() + `"]
+			}
+		`,
+		ResCode: http.StatusBadRequest,
+		ResFunc: isError,
 	},
 
 	&TC{
@@ -369,6 +433,38 @@ var testCases = []*TC{
     `,
 		ResCode: http.StatusBadRequest,
 		ResFunc: isError,
+	},
+
+	&TC{
+		Name:   "beforeDelete hook should prevent alice from getting destroyed",
+		Method: POST,
+		URL:    "/exec",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "destroyMember",
+				"args": []
+			}
+		`,
+		ResType: ApplicationJSON,
+		ResCode: http.StatusBadRequest,
+		ResFunc: isError,
+	},
+
+	&TC{
+		Name:   "deleting bob should be fine",
+		Method: POST,
+		URL:    "/exec",
+		User:   bob,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "destroyMember",
+				"args": []
+			}
+		`,
+		ResFunc: isOK,
 	},
 }
 
@@ -436,7 +532,7 @@ func (tc *TC) Test() error {
 	fmt.Fprintln(buf, " ---->", tc.Method, tc.URL)
 	fmt.Fprintln(buf, " ----> Content-Type:", tc.Type)
 	if tc.User != nil && tc.User.Token != "" {
-		fmt.Fprintln(buf, " ----> Authorization: bearer", tc.User.Token)
+		fmt.Fprintln(buf, " ----> Authorization: bearer", tc.User.Token, "("+tc.User.Username+")")
 		req.Header.Add("Authorization", "bearer "+tc.User.Token)
 	}
 	fmt.Fprintln(buf, " ----> ", tc.Body)

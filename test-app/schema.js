@@ -39,11 +39,18 @@ export class member {
 			throw new Error('username too short');
 		}
 	}
+
+	beforeDelete(){
+		if( this.username == 'alice' ){
+			throw 'alice is indestructable!';
+		}
+	}
+
 }
 
 export class email {
 	static member_id           = {type: 'uuid', ref: 'member'}
-	static addr                = {type: 'text'}
+	static addr                = {type: 'text', unique:true}
 
 	beforeChange(){
 		this.validateEmail();
@@ -61,9 +68,18 @@ export class friend {
 	static member_1_id = {type: 'uuid', ref:'member'}
 	static member_2_id = {type: 'uuid', ref:'member'}
 
+	static indexes = {
+			unique_join: {on: ['member_1_id', 'member_2_id'], unique:true}
+	}
+
 	beforeChange(){
 		if( this.member_1_id > this.member_2_id ){
-			this.member_1_id,this.member_2_id = this.member_2_id, this.member_1_id;
+			[this.member_1_id,this.member_2_id] = [this.member_2_id, this.member_1_id];
 		}
+		if( this.member_1_id == this.member_2_id ){
+			throw new UserError('you cannot make friends with yourself');
+		}
+		console.info('mem1', this.member_1_id);
+		console.info('mem2', this.member_2_id);
 	}
 }

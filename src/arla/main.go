@@ -213,10 +213,10 @@ func (s *Server) execHandler(w http.ResponseWriter, r *http.Request, t schema.To
 	// return ok
 	enc := json.NewEncoder(w)
 	err = enc.Encode(&struct {
-		ID      schema.UUID `json:"id"`
-		Success bool        `json:"success"`
+		// ID      schema.UUID `json:"id,omitempty"`
+		Success bool `json:"success"`
 	}{
-		ID:      m.ID,
+		// ID:      m.ID,
 		Success: true,
 	})
 	if err != nil {
