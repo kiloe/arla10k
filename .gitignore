@@ -4,6 +4,7 @@ bin/*
 src/golang.org/*
 src/github.com/*
 src/bitbucket.org/*
+src/gopkg.in/*
 src/code.google.com/*
 src/arla/querystore/js/graphql.js
 src/arla/querystore/postgres_init.go
