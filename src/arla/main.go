@@ -195,6 +195,7 @@ func (s *Server) execHandler(w http.ResponseWriter, r *http.Request, t schema.To
 	if err != nil {
 		return userError(err)
 	}
+	m.Token = t
 	// send to query engine
 	err = s.qs.Mutate(&m)
 	if err != nil {

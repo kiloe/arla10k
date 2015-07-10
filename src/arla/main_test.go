@@ -83,15 +83,17 @@ var (
 	}
 )
 
-func hasAccessToken(b []byte) error {
-	v := make(map[string]string)
-	if err := json.Unmarshal(b, &v); err != nil {
-		return err
+func hasKey(k string) func(b []byte) error {
+	return func(b []byte) error {
+		v := make(map[string]interface{})
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
+		}
+		if t, ok := v[k]; !ok || t == nil {
+			return fmt.Errorf("expected response to have key '%s' access_token got %v", k, string(b))
+		}
+		return nil
 	}
-	if t, ok := v["access_token"]; !ok || t == "" {
-		return fmt.Errorf("expected to get an access_token got %v", string(b))
-	}
-	return nil
 }
 
 var testCases = []*TC{
@@ -104,7 +106,7 @@ var testCases = []*TC{
 		Body:    alice.JSON(),
 		ResType: ApplicationJSON,
 		ResCode: http.StatusOK,
-		ResFunc: hasAccessToken,
+		ResFunc: hasKey("access_token"),
 	},
 
 	&TC{
@@ -115,7 +117,81 @@ var testCases = []*TC{
 		Body:    bob.JSON(),
 		ResType: ApplicationJSON,
 		ResCode: http.StatusOK,
-		ResFunc: hasAccessToken,
+		ResFunc: hasKey("access_token"),
+	},
+
+	&TC{
+		Name:   "query me() on root for alice",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      me() {
+        username
+      }
+    `,
+		ResType: ApplicationJSON,
+		ResCode: http.StatusOK,
+		ResBody: `{"me":{"username":"alice"}}`,
+	},
+
+	&TC{
+		Name:   "query me() on root for bob",
+		Method: POST,
+		URL:    "/query",
+		User:   bob,
+		Type:   TextPlain,
+		Body: `
+      me(){username}
+    `,
+		ResType: ApplicationJSON,
+		ResCode: http.StatusOK,
+		ResBody: `{"me":{"username":"bob"}}`,
+	},
+
+	&TC{
+		Name:   "add an email address for bob",
+		Method: POST,
+		URL:    "/exec",
+		User:   bob,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "addEmailAddress",
+				"args": ["bob@bob.com"]
+			}
+		`,
+		ResType: ApplicationJSON,
+		ResCode: http.StatusOK,
+		ResFunc: hasKey("success"),
+	},
+
+	&TC{
+		Name:   "query bob's email addresses",
+		Method: POST,
+		URL:    "/query",
+		User:   bob,
+		Type:   TextPlain,
+		Body: `
+      me(){
+				username
+				email_addresses() {
+					addr
+				}
+			}
+    `,
+		ResType: ApplicationJSON,
+		ResCode: http.StatusOK,
+		ResBody: `
+			{
+				"me":{
+					"username":"bob",
+					"email_addresses": [
+						{"addr": "bob@bob.com"}
+					]
+				}
+			}`,
 	},
 
 	&TC{

@@ -38,7 +38,10 @@ import gql from "./graphql"
 
 	function col({type = 'text', nullable = false, def = undefined, pk = false, onDelete = 'CASCADE', onUpdate = 'RESTRICT', ref} = {}) {
 		if( type == 'timestamp' ){
-			type = 'timestamptz'; // never use non timezone stamp - it's bad news.
+			console.warn('there are issues with the timestamp type it is recordmend you use timestamptz');
+		}
+		if( !type && ref ){
+			type = 'uuid';
 		}
 		var x = [type];
 		if( ref ){
@@ -149,18 +152,27 @@ import gql from "./graphql"
 
 	var PARENT_MATCH = /\$this/g;
 
-	function sqlForProperty(property, session, ast, alias, i=0){
+	function sqlForProperty(klass, session, ast, alias, i=0){
+		let property = klass[ast.name];
+		if( !property ){
+			throw new Error(`${klass.name} has no property ${ast.name}`)
+		}
+		if( !property.type ){
+			throw new Error(`${klass.name} does not have a valid property ${ast.name}`)
+		}
 		// simple property fetch
 		if( !property.query ){
 			return `${ alias }.${property.name}`;
 		}
 		// build context that can be used to reference parent table
-		let cxt = Object.keys(property.klass).reduce(function(o, k){
+		let cxtReverse = {};
+		let cxt = Object.keys(klass).reduce(function(o, k){
 			o[k] = alias+'.'+k;
-			o[k].ident = true;
+			cxtReverse[alias+'.'+k] = true;
 			return o;
 		},{});
-		cxt.current_user = session;
+		cxt.session = session;
+		console.log('CXT', cxt);
 		// fetch the sql query
 		let sql = property.query.apply(cxt, ast.args);
 		// interpolate any variables into the sql
@@ -173,15 +185,18 @@ import gql from "./graphql"
 				if( sql.length-1 < n ){
 					throw new Error(`no variable for placeholder: \$${ns}`);
 				}
-				if( sql[n].ident ){
-					return plv8.quote_ident(sql[n]);
+				if( typeof sql[n] == 'undefined' ){
+					console.warn(`placeholder variable ${n} is undefined in query for ${klass.name} ${property.name}`);
+				}
+				if( sql[n] && cxtReverse[sql[n]] ){
+					return sql[n];
 				}
 				return plv8.quote_literal(sql[n]);
 			});
 		}
 		// no query returned
 		if( !sql ){
-			throw new Error(`no query sql returned from edge call: ${property.name} on ${property.klass.name}`);
+			throw new Error(`no query sql returned from edge call: ${property.name} on ${klass.name}`);
 		}
 		let jsonfn = 'row_to_json';
 		let type = property.type;
@@ -189,7 +204,7 @@ import gql from "./graphql"
 			jsonfn = 'json_agg';
 			type = property.of;
 			if( !type ){
-				throw new Error(`${property.klass.name} ${property.name} declares an array type but without an 'of' type set`);
+				throw new Error(`${klass.name} ${property.name} declares an array type but without an 'of' type set`);
 			}
 		}
 		let x = `x${ i }`;
@@ -202,6 +217,9 @@ import gql from "./graphql"
 				) as ${property.name}
 			`;
 		}
+		if( !ast.props || ast.props.length === 0 ){
+			throw new Error(`${klass.name} ${property.name} is a call and as such requires the form ${property.name}(){ field_a, field_b, etc..}`);
+		}
 		return `
 			(with
 				${q} as ( ${ sql } ),
@@ -212,20 +230,12 @@ import gql from "./graphql"
 	}
 
 	function sqlForClass(klass, session, ast, alias, i = 0){
-		return "select " + Object.keys(ast.props).reduce(function(cols, k){
-			let property = klass[k];
-			if( !property ){
-				throw new Error(`${klass.name} has no property ${k}`)
-			}
-			if( !property.type ){
-				throw new Error(`${klass.name}#${k} is not a valid property type`)
-			}
-			let sql = sqlForProperty(property, session, ast.props[k], alias, i);
-			if( sql ){
-				cols.push(sql);
-			}
-			return cols;
-		},[]).join(',');
+		if(ast.kind == 'property'){
+			throw new Error('invalid query expected property definitions');
+		}
+		return "select " + Object.keys(ast.props).map(function(k){
+			return sqlForProperty(klass, session, ast.props[k], alias, i)
+		}).join(',');
 	}
 
 	arla.trigger = function(e){
@@ -261,8 +271,8 @@ import gql from "./graphql"
 			}
 		}
 		// exec the mutation func
-		console.debug(`action ${name} given`, args);
-		var queryArgs = fn.apply(session, args);
+		console.debug(`action ${name} args:`, args, "session:", session);
+		var queryArgs = fn.apply({session:session}, args);
 		if( !queryArgs ){
 			console.debug(`action ${name} was a noop`);
 			return [];
