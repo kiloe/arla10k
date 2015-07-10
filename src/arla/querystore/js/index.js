@@ -199,9 +199,11 @@ import gql from "./graphql"
 			throw new Error(`no query sql returned from edge call: ${property.name} on ${klass.name}`);
 		}
 		let jsonfn = 'row_to_json';
+		let jsondef = '{}';
 		let type = property.type;
 		if( type == 'array' ){
 			jsonfn = 'json_agg';
+			jsondef = '[]';
 			type = property.of;
 			if( !type ){
 				throw new Error(`${klass.name} ${property.name} declares an array type but without an 'of' type set`);
@@ -224,7 +226,7 @@ import gql from "./graphql"
 			(with
 				${q} as ( ${ sql } ),
 				${x} as ( ${sqlForClass(schema[type], session, ast, q, ++i)} from ${q} )
-				select ${jsonfn}(${x}.*) from ${x}
+				select coalesce(${jsonfn}(${x}.*),'${jsondef}'::json) from ${x}
 			) as ${property.name}
 		`;
 	}

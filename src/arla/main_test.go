@@ -104,8 +104,6 @@ var testCases = []*TC{
 		URL:     "/register",
 		Type:    ApplicationJSON,
 		Body:    alice.JSON(),
-		ResType: ApplicationJSON,
-		ResCode: http.StatusOK,
 		ResFunc: hasKey("access_token"),
 	},
 
@@ -115,8 +113,6 @@ var testCases = []*TC{
 		URL:     "/register",
 		Type:    ApplicationJSON,
 		Body:    bob.JSON(),
-		ResType: ApplicationJSON,
-		ResCode: http.StatusOK,
 		ResFunc: hasKey("access_token"),
 	},
 
@@ -131,8 +127,6 @@ var testCases = []*TC{
         username
       }
     `,
-		ResType: ApplicationJSON,
-		ResCode: http.StatusOK,
 		ResBody: `{"me":{"username":"alice"}}`,
 	},
 
@@ -145,8 +139,6 @@ var testCases = []*TC{
 		Body: `
       me(){username}
     `,
-		ResType: ApplicationJSON,
-		ResCode: http.StatusOK,
 		ResBody: `{"me":{"username":"bob"}}`,
 	},
 
@@ -162,13 +154,11 @@ var testCases = []*TC{
 				"args": ["bob@bob.com"]
 			}
 		`,
-		ResType: ApplicationJSON,
-		ResCode: http.StatusOK,
 		ResFunc: hasKey("success"),
 	},
 
 	&TC{
-		Name:   "query bob's email addresses",
+		Name:   "bob should have an email address",
 		Method: POST,
 		URL:    "/query",
 		User:   bob,
@@ -181,8 +171,6 @@ var testCases = []*TC{
 				}
 			}
     `,
-		ResType: ApplicationJSON,
-		ResCode: http.StatusOK,
 		ResBody: `
 			{
 				"me":{
@@ -190,6 +178,29 @@ var testCases = []*TC{
 					"email_addresses": [
 						{"addr": "bob@bob.com"}
 					]
+				}
+			}`,
+	},
+
+	&TC{
+		Name:   "alice should NOT have any email addresses",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      me(){
+				username
+				email_addresses() {
+					addr
+				}
+			}
+    `,
+		ResBody: `
+			{
+				"me":{
+					"username":"alice",
+					"email_addresses": []
 				}
 			}`,
 	},
@@ -205,8 +216,6 @@ var testCases = []*TC{
         username
       }
     `,
-		ResType: ApplicationJSON,
-		ResCode: http.StatusOK,
 		ResBody: `
 			{
 				"members": [
@@ -242,9 +251,8 @@ func (tc *TC) Test() error {
 		fmt.Fprint(buf, "\n", ansi.Reset)
 		return errors.New(buf.String())
 	}
-	reqType := tc.Type
-	if reqType == "" {
-		reqType = ApplicationJSON
+	if tc.Type == "" {
+		tc.Type = ApplicationJSON
 	}
 	// authenticate
 	if tc.User != nil {
@@ -282,7 +290,7 @@ func (tc *TC) Test() error {
 		return fail("failed to build request: %v", err)
 	}
 	fmt.Fprintln(buf, " ---->", tc.Method, tc.URL)
-	fmt.Fprintln(buf, " ----> Content-Type:", reqType)
+	fmt.Fprintln(buf, " ----> Content-Type:", tc.Type)
 	if tc.User != nil && tc.User.Token != "" {
 		fmt.Fprintln(buf, " ----> Authorization: bearer", tc.User.Token)
 		req.Header.Add("Authorization", "bearer "+tc.User.Token)
@@ -298,6 +306,9 @@ func (tc *TC) Test() error {
 	if err != nil {
 		return fail("failed to parse response body: %v", err)
 	}
+	if b == nil {
+		return fail("failed to parse response body: b was nil?")
+	}
 	resBody := string(b)
 	resType := res.Header.Get("Content-Type")
 	fmt.Fprintln(buf)
@@ -305,12 +316,18 @@ func (tc *TC) Test() error {
 	fmt.Fprintln(buf, " <---- Content-Type:", resType)
 	fmt.Fprintln(buf, " <----", resBody)
 	// check response code
+	if tc.ResCode == 0 {
+		tc.ResCode = http.StatusOK
+	}
 	if tc.ResCode != res.StatusCode {
 		return fail("expected status code to be %v", tc.ResCode)
 	}
 	// check the response type matches
 	if resType == "" {
 		return fail("expected response to have a Content-Type")
+	}
+	if tc.ResType == "" {
+		tc.ResType = ApplicationJSON
 	}
 	if tc.ResType != resType {
 		return fail("response Content-Type to be %v", tc.ResType)
@@ -322,7 +339,6 @@ func (tc *TC) Test() error {
 	} else {
 		switch tc.ResType {
 		case ApplicationJSON:
-			// compare the responses by
 			if !cmpjson([]byte(tc.ResBody), b) {
 				return fail("expected json response to be:\n%v", tc.ResBody)
 			}
