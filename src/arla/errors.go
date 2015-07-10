@@ -9,7 +9,7 @@ import (
 type Error struct {
 	err     error
 	code    int
-	Message string
+	Message string `json:"message"`
 }
 
 // Error implements the error interface

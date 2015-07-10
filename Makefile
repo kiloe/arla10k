@@ -57,6 +57,9 @@ clean:
 	docker rmi -f $(IMAGE) 2>/dev/null || true
 
 
+test-arla: all
+	$(GO) test -v arla
+
 test: all
 	$(GO) test -v arla/querystore
 	$(GO) test -v arla/mutationstore

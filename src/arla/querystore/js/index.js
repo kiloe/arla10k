@@ -64,6 +64,7 @@ import gql from "./graphql"
 	}
 
 	function define(name, o){
+		console.log('defining', name);
 		if( !o.properties ){
 			o.properties = {};
 		}
@@ -222,12 +223,7 @@ import gql from "./graphql"
 				return;
 			}
 			triggers.forEach(function(fn){
-				try{
-					fn(e.record, e);
-				}catch(err){
-					console.log(`${ op } constraint rejected transaction for ${ e.table } record: ${ JSON.stringify(e.record, null, 4) }`);
-					throw err;
-				}
+				fn.apply(e.record,[e]);
 			});
 		});
 		return e.record;
@@ -283,7 +279,7 @@ import gql from "./graphql"
 			if( err.line && err.offset ){
 				console.warn( query.split(/\n/)[err.line-1] );
 				console.warn( `${ Array(err.column).join('-') }^` );
-				throw new SyntaxError(`arla_query: line ${err.line}, column ${err.column}: ${err.message}`)
+				err = new Error(`arla_query: line ${err.line}, column ${err.column}: ${err.message}`)
 			}
 			throw err;
 		}
@@ -292,7 +288,7 @@ import gql from "./graphql"
 	arla.authenticate = function(values){
 		var res = db.query.apply(db, arla.cfg.authenticate(values));
 		if( res.length < 1 ){
-			throw new Error('unauthorized');
+			throw new Error('invalid credentials');
 		}
 		return res[0];
 	}
@@ -301,20 +297,17 @@ import gql from "./graphql"
 		return arla.cfg.register(values);
 	}
 
+	// init will only ever run once
 	arla.init = function(){
-		try{
-			// build schema
-			ddl.forEach(function(stmt){
-				db.query(stmt);
-			});
-		}catch(e){
-			arla.throwError(e);
-		}
+		ddl.forEach(function(stmt){
+			db.query(stmt);
+		});
 	}
 
+	// configure will be run everytime a js context is started
 	arla.configure = function(cfg){
 		if( arla.cfg ){
-			throw 'configure should only be called ONCE!';
+			throw new Error('configure should only be called ONCE!');
 		}
 		// setup user schema
 		Object.keys(cfg.schema || {}).forEach(function(name){
@@ -330,38 +323,14 @@ import gql from "./graphql"
 		arla.cfg = cfg;
 		// validate some cfg options
 		if( !arla.cfg.authenticate ){
-			throw 'missing required "authenticate" function';
+			throw new Error('missing required "authenticate" function');
 		}
 		if( !arla.cfg.register ){
-			throw 'missing required "register" function';
+			throw new Error('missing required "register" function');
 		}
-		// evaluate other config options
-		for( let k in arla.cfg ){
-			switch(k){
-			case 'schema':
-			case 'actions':
-			case 'authenticate':
-			case 'register':
-				break;
-			case 'logLevel':
-				plv8.elog(NOTICE, "setting logLevel:"+arla.cfg[k]);
-				console.logLevel = arla.cfg[k];
-				break;
-			default:
-				console.warn('ignoring invalid config option:',k);
-			}
-		}
-	}
-
-	arla.throwError = function(e){
-    plv8.elog(ERROR, e.stack || e.message || e.toString());
 	}
 
 })();
 
 // Execute the user's code
-try{
-	//CONFIG//
-} catch (e) {
-		arla.throwError(e);
-}
+//CONFIG//

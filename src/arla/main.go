@@ -9,17 +9,22 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/jessevdk/go-flags"
 	"gopkg.in/tylerb/graceful.v1"
 )
 
-type opts struct {
-	ConfigPath string
-}
+// Content-Types
+const (
+	ApplicationJSON = "application/json"
+	TextPlain       = "text/plain; charset=utf-8"
+)
 
 // HandlerFunc is the type of handler used by Server
 type HandlerFunc func(w http.ResponseWriter, r *http.Request) *Error
@@ -27,21 +32,41 @@ type HandlerFunc func(w http.ResponseWriter, r *http.Request) *Error
 // AuthenticatedHandlerFunc is a type of http.handler that requires authorization
 type AuthenticatedHandlerFunc func(w http.ResponseWriter, r *http.Request, t schema.Token) *Error
 
+// Config holds options for the server
+type Config struct {
+	// ConfigPath is the filepath to the javascript server configuration
+	ConfigPath string `long:"config-path" description:"path to the javascript config file" default:"./index.js" env:"ARLA_CONFIG_PATH"`
+	// Secret is used for signing authentication tokens
+	Secret string `long:"secret" description:"secret to use for signing authentication tokens" required:"true" env:"ARLA_SECRET"`
+	// DataDir is the filepath to where data will be stored
+	DataDir string `long:"data-dir" description:"path to persistant data storage" default:"/var/state" required:"true" env:"ARLA_DATA_DIR"`
+	// ListenAddr is the address the HTTP server binds to
+	ListenAddr string `long:"listen-addr" description:"address and port to bind http server to" default:":80" required:"true" env:"ARLA_LISTEN_ADDR"`
+	// GraceDuration is the time allowed to finishing serving requests during shutdown
+	GraceDuration int `long:"grace-duration" description:"time allowed in seconds to finish serving requests during shutdown" default:"1" required:"true" env:"ARLA_GRACE_DURATION"`
+	// Debug enables debug log messages
+	Debug bool `long:"debug" description:"enable verbose debug error logging"`
+}
+
 // Server is an HTTP server
 type Server struct {
-	Secret []byte
-	qs     querystore.Engine
-	ms     *mutationstore.Log
-	mux    *http.ServeMux
-	http   *graceful.Server
-	wg     sync.WaitGroup
+	cfg      Config
+	qs       querystore.Engine
+	ms       *mutationstore.Log
+	mux      *http.ServeMux
+	http     *graceful.Server
+	wg       sync.WaitGroup
+	stopping bool
 }
 
 // Launch the querystore
 func (s *Server) startQueryEngine() (err error) {
+	if s.qs != nil {
+		return nil
+	}
 	// init query store
 	s.qs, err = querystore.New(&querystore.Config{
-		Path:     "/app/index.js",
+		Path:     s.cfg.ConfigPath,
 		LogLevel: querystore.DEBUG,
 	})
 	if err != nil {
@@ -54,13 +79,20 @@ func (s *Server) startQueryEngine() (err error) {
 		if err := s.qs.Wait(); err != nil {
 			fmt.Println("postgresql exited: ", err)
 		}
+		s.qs = nil
+		fmt.Println("queryengine shutdown")
+		s.Stop()
 	}()
 	return nil
 }
 
 // startLog launches the data store that logs all mutations
 func (s *Server) startLog() (err error) {
-	s.ms, err = mutationstore.Open("/var/state/datastore")
+	if s.ms != nil {
+		return nil
+	}
+	filename := filepath.Join(s.cfg.DataDir, "datastore")
+	s.ms, err = mutationstore.Open(filename)
 	if err != nil {
 		return fmt.Errorf("failed to start mutationstore: %s", err)
 	}
@@ -97,7 +129,7 @@ func (s *Server) login(w http.ResponseWriter, vals string) *Error {
 		token.Claims[k] = v
 	}
 	token.Claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
-	accessToken, err := token.SignedString(s.Secret)
+	accessToken, err := token.SignedString([]byte(s.cfg.Secret))
 	if err != nil {
 		return internalError(err)
 	}
@@ -215,7 +247,12 @@ func (s *Server) addAuthenticatedHandler(path string, fn AuthenticatedHandlerFun
 // It ensures that the error responses are always JSON encoded
 func (s *Server) wrapHandler(fn HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// set default response type
+		w.Header().Set("Content-Type", ApplicationJSON)
+		// call handler
 		if err := fn(w, r); err != nil {
+			// handle errors
+			fmt.Println("ERRORRESPONSE", err.err)
 			w.WriteHeader(err.code)
 			enc := json.NewEncoder(w)
 			if fatal := enc.Encode(err); fatal != nil {
@@ -234,7 +271,7 @@ func (s *Server) wrapAuthenticatedHandler(fn AuthenticatedHandlerFunc) HandlerFu
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
-			return s.Secret, nil
+			return []byte(s.cfg.Secret), nil
 		})
 		if err != nil {
 			return authError(err)
@@ -265,34 +302,52 @@ func (s *Server) startHTTP() error {
 	if s.http != nil {
 		return nil
 	}
+	shutdownExpected := false
 	s.http = &graceful.Server{
-		Timeout: 10 * time.Second,
+		Timeout: time.Duration(s.cfg.GraceDuration) * time.Second,
 		Server: &http.Server{
-			Addr:    ":80",
+			Addr:    s.cfg.ListenAddr,
 			Handler: s.mux,
+		},
+		ShutdownInitiated: func() {
+			fmt.Println("http server shutting down")
+			shutdownExpected = true
 		},
 	}
 	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
+		fmt.Println("http server started")
 		if err := s.http.ListenAndServe(); err != nil {
-			fmt.Println("ListenAndServe: ", err)
+			if !shutdownExpected {
+				fmt.Println("ListenAndServe: ", err)
+			}
 		}
 		s.http = nil
-		s.wg.Done()
+		fmt.Println("http server shutdown")
+		s.Stop()
 	}()
 	return nil
 }
 
 // Start launches the Server
-func (s *Server) Start() error {
-	if err := s.startQueryEngine(); err != nil {
-		return err
+func (s *Server) Start() (err error) {
+	defer func() {
+		if err != nil {
+			s.Stop()
+		}
+	}()
+	if err = s.startQueryEngine(); err != nil {
+		return
 	}
-	if err := s.startLog(); err != nil {
-		return err
+	if err = s.startLog(); err != nil {
+		return
 	}
-	if err := s.startHTTP(); err != nil {
-		return err
+	if err = s.replayLog(); err != nil {
+		return
+	}
+	if err = s.startHTTP(); err != nil {
+		return
 	}
 	return nil
 }
@@ -313,13 +368,29 @@ func (s *Server) Run() error {
 
 // Stop shutsdown the server and blocks until complete
 func (s *Server) Stop() error {
-	var errs []string
-	s.http.Stop(1 * time.Second)
-	if err := s.qs.Stop(); err != nil {
-		errs = append(errs, err.Error())
+	if s.stopping {
+		return nil
 	}
-	if err := s.ms.Close(); err != nil {
-		errs = append(errs, err.Error())
+	s.stopping = true
+	defer func() {
+		s.stopping = false
+	}()
+	var errs []string
+	if s.http != nil {
+		s.http.Stop(1 * time.Second)
+		s.http = nil
+	}
+	if s.qs != nil {
+		if err := s.qs.Stop(); err != nil {
+			errs = append(errs, err.Error())
+		}
+		s.qs = nil
+	}
+	if s.ms != nil {
+		if err := s.ms.Close(); err != nil {
+			errs = append(errs, err.Error())
+		}
+		s.ms = nil
 	}
 	if err := s.Wait(); err != nil {
 		errs = append(errs, err.Error())
@@ -331,13 +402,13 @@ func (s *Server) Stop() error {
 }
 
 // New creates a new server with all required fields set
-func New(secret string) *Server {
+func New(cfg Config) *Server {
 	s := &Server{
-		Secret: []byte(secret),
-		mux:    http.NewServeMux(),
+		cfg: cfg,
+		mux: http.NewServeMux(),
 	}
 	s.addHandler("/register", s.registrationHandler)
-	s.addHandler("/authenticate", s.registrationHandler)
+	s.addHandler("/authenticate", s.authenticationHandler)
 	s.addAuthenticatedHandler("/exec", s.execHandler)
 	s.addAuthenticatedHandler("/query", s.queryHandler)
 	s.mux.Handle("/", http.FileServer(http.Dir("/app/public")))
@@ -345,7 +416,11 @@ func New(secret string) *Server {
 }
 
 func main() {
-	if err := New("mysecret").Run(); err != nil {
+	var cfg Config
+	if _, err := flags.ParseArgs(&cfg, os.Args); err != nil {
+		log.Fatal(err)
+	}
+	if err := New(cfg).Run(); err != nil {
 		log.Fatal(err)
 	}
 }

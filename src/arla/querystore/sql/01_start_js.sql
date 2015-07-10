@@ -120,20 +120,9 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 	// add console logging
 	var console = (function(console){
 
-		console.UNKNOWN = 0;
-		console.ALL = 1;
-		console.DEBUG = 2;
-		console.INFO = 3;
-		console.LOG = 4;
-		console.WARN = 5;
-		console.ERROR = 6;
-		console.logLevel = console.ALL;
-		function logger(level, pglevel, tag) {
-			if( level < console.logLevel ){
-				return;
-			}
+		function logger(tag) {
 			var args = [];
-			for (var i = 2; i < arguments.length; i++) {
+			for (var i = 1; i < arguments.length; i++) {
 				args.push(arguments[i]);
 			}
 			var msg = args.map(function(msg){
@@ -143,14 +132,14 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 				return msg;
 			}).join(' ');
 			(msg || '').split(/\n/g).forEach(function(line){
-				plv8.elog(pglevel, line);
+				plv8.elog(NOTICE, tag + line);
 			})
 		}
-		console.debug = logger.bind(console, console.DEBUG, NOTICE, "DEBUG:");
-		console.info  = logger.bind(console, console.INFO, NOTICE, "INFO:");
-		console.log   = logger.bind(console, console.LOG, NOTICE, "LOG:");
-		console.warn  = logger.bind(console, console.WARN, NOTICE, "WARN:");
-		console.error = logger.bind(console, console.ERROR, NOTICE, "ERROR:");
+		console.debug = logger.bind(console, "DEBUG:");
+		console.info  = logger.bind(console, "INFO:");
+		console.log   = logger.bind(console, "LOG:");
+		console.warn  = logger.bind(console, "WARN:");
+		console.error = logger.bind(console, "ERROR:");
 		return console;
 	})({});
 
@@ -161,7 +150,7 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 			for (var i = 1; i < arguments.length; i++) {
 				args.push(arguments[i]);
 			}
-			console.debug(sql, args);
+			console.debug("QUERY", sql, args);
 			return plv8.execute(sql, args);
 		}
 		db.transaction = plv8.subtransaction;

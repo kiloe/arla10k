@@ -96,8 +96,10 @@ func (p *postgres) GetLogLevel() logLevel {
 }
 
 // Stop disconnects and shutsdown the queryengine
-func (p *postgres) Stop() error {
-	return p.cmd.Process.Kill()
+func (p *postgres) Stop() (err error) {
+	err = p.cmd.Process.Kill()
+	close(p.quit)
+	return
 }
 
 // Mutate applies a schema.Mutation to the data
