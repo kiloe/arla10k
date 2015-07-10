@@ -1,6 +1,7 @@
 package main
 
 import (
+	"arla/schema"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/evanphx/json-patch"
 	"github.com/mgutz/ansi"
@@ -49,9 +51,10 @@ type TC struct {
 }
 
 type user struct {
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
-	Token    string `json:"-,omitempty"`
+	ID       schema.UUID `json:"id"`
+	Username string      `json:"username,omitempty"`
+	Password string      `json:"password,omitempty"`
+	Token    string      `json:"-,omitempty"`
 }
 
 func (u *user) JSON() string {
@@ -70,14 +73,17 @@ var (
 
 var (
 	alice = &user{
+		ID:       schema.TimeUUID(),
 		Username: "alice",
 		Password: "%alice123",
 	}
 	bob = &user{
+		ID:       schema.TimeUUID(),
 		Username: "bob",
 		Password: "bobzpasswerd",
 	}
 	invalid = &user{
+		ID:       schema.TimeUUID(),
 		Username: "not-a-valid-username",
 		Password: "not-a-valid-password",
 	}
@@ -90,11 +96,14 @@ func hasKey(k string) func(b []byte) error {
 			return err
 		}
 		if t, ok := v[k]; !ok || t == nil {
-			return fmt.Errorf("expected response to have key '%s' access_token got %v", k, string(b))
+			return fmt.Errorf("expected response to have key '%s' but got %v", k, string(b))
 		}
 		return nil
 	}
 }
+
+var isError = hasKey("message")
+var isOK = hasKey("success")
 
 var testCases = []*TC{
 
@@ -154,7 +163,7 @@ var testCases = []*TC{
 				"args": ["bob@bob.com"]
 			}
 		`,
-		ResFunc: hasKey("success"),
+		ResFunc: isOK,
 	},
 
 	&TC{
@@ -206,7 +215,7 @@ var testCases = []*TC{
 	},
 
 	&TC{
-		Name:   "query members() on root",
+		Name:   "query members() on root with email addrs",
 		Method: POST,
 		URL:    "/query",
 		User:   alice,
@@ -214,25 +223,160 @@ var testCases = []*TC{
 		Body: `
       members() {
         username
+				email_addresses() {
+					addr
+				}
       }
     `,
 		ResBody: `
 			{
 				"members": [
-					{"username":"alice"},
-					{"username":"bob"}
+					{"username":"alice", "email_addresses":[]},
+					{"username":"bob", "email_addresses":[{"addr":"bob@bob.com"}]}
 				]
 			}
 		`,
+	},
+
+	&TC{
+		Name:   "give alice a SHOUTY and spacey email",
+		Method: POST,
+		URL:    "/exec",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "addEmailAddress",
+				"args": ["      ALICE@ALICE.com "]
+			}
+		`,
+		ResFunc: isOK,
+	},
+
+	&TC{
+		Name:   "beforeChange hook should have lowercased/trimmed the SHOUTY email",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      me(){
+				email_addresses() {
+					addr
+				}
+			}
+    `,
+		ResBody: `
+			{
+				"me":{
+					"email_addresses": [{"addr":"alice@alice.com"}]
+				}
+			}`,
+	},
+
+	&TC{
+		Name:   "beforeChange hook should prevent adding an invalid email for alice",
+		Method: POST,
+		URL:    "/exec",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "addEmailAddress",
+				"args": ["not-an-email"]
+			}
+		`,
+		ResType: ApplicationJSON,
+		ResCode: http.StatusBadRequest,
+		ResFunc: isError,
+	},
+
+	&TC{
+		Name:   "make alice and bob friends",
+		Method: POST,
+		URL:    "/exec",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "addFriend",
+				"args": ["` + bob.ID.String() + `"]
+			}
+		`,
+		ResFunc: isOK,
+	},
+
+	&TC{
+		Name:   "alice should see bob as a friend",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      me(){
+				friends() {
+					username
+				}
+			}
+    `,
+		ResBody: `
+			{
+				"me":{
+					"friends": [{"username":"bob"}]
+				}
+			}`,
+	},
+
+	&TC{
+		Name:   "alice should see bob as a friend who should see alice as a friend ad infinitum",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      me(){
+				friends() {
+					username
+					friends() {
+						username
+						friends() {
+							username
+						}
+					}
+				}
+			}
+    `,
+		ResBody: `
+			{
+				"me":{
+					"friends": [{"username":"bob", "friends": [{"username":"alice", "friends":[{"username":"bob"}]}]}]
+				}
+			}`,
+	},
+
+	&TC{
+		Name:   "friends can't see friends passwords",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      me(){
+				friends() {
+					password
+				}
+			}
+    `,
+		ResCode: http.StatusBadRequest,
+		ResFunc: isError,
 	},
 }
 
 var server *Server
 
 // compare json bytes a to b
-// considered equal if
 func cmpjson(a, b []byte) bool {
-	return jsonpatch.Equal(a, b)
+	return jsonpatch.Equal(a, b) && jsonpatch.Equal(b, a)
 }
 
 // Test converts a test case into a Request to execute against
@@ -359,6 +503,12 @@ func TestCases(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// dump successes to screen - makes it less weird since some of the "errors"
+	// are actually part of the tests and it can look confusing
+	fmt.Print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
+	for _, tc := range testCases {
+		fmt.Println(tc.Name, ansi.Green, "OK", ansi.Reset)
+	}
 }
 
 func TestMain(m *testing.M) {
@@ -372,6 +522,9 @@ func TestMain(m *testing.M) {
 	if err := server.Start(); err != nil {
 		log.Fatal("failed to start server", err)
 	}
+	// FIXME: there's a race condition between calling Start() and the HTTP server actually
+	// accepting connections ... this only really affects the tests tho.
+	time.Sleep(1 * time.Second)
 	// run tests
 	status := m.Run()
 	// shutdown server

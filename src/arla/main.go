@@ -65,10 +65,14 @@ func (s *Server) startQueryEngine() (err error) {
 		return nil
 	}
 	// init query store
-	s.qs, err = querystore.New(&querystore.Config{
+	qscfg := &querystore.Config{
 		Path:     s.cfg.ConfigPath,
-		LogLevel: querystore.DEBUG,
-	})
+		LogLevel: querystore.INFO,
+	}
+	if s.cfg.Debug {
+		qscfg.LogLevel = querystore.DEBUG
+	}
+	s.qs, err = querystore.New(qscfg)
 	if err != nil {
 		time.Sleep(3 * time.Second) // TODO: exit too soon and you won't see the logs
 		return fmt.Errorf("failed to start query engine: %s", err)
@@ -253,7 +257,7 @@ func (s *Server) wrapHandler(fn HandlerFunc) http.HandlerFunc {
 		// call handler
 		if err := fn(w, r); err != nil {
 			// handle errors
-			fmt.Println("ERRORRESPONSE", err.err)
+			//fmt.Println(err)
 			w.WriteHeader(err.code)
 			enc := json.NewEncoder(w)
 			if fatal := enc.Encode(err); fatal != nil {

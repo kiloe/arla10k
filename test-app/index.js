@@ -18,15 +18,14 @@ arla.configure({
     `, username, password];
   },
   // the register function returns the mutation-action action that will
-  // be executed to register a new user. Unlike other mutations this
-  // one should also build a temporary token
-  register({username, password}){
+  // be executed to register a new user.
+  // The reason for this transformation is to prevent the password from
+  // ending up in the mutation log
+  register(values){
+    values.password = pgcrypto.crypt(values.password);
     return {
       Name: "registerMember",
-      Args:[{
-        username: username,
-        password: pgcrypto.crypt(password)
-      }]
+      Args:[values]
     }
   }
 

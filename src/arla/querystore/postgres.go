@@ -21,6 +21,8 @@ import "github.com/jackc/pgx"
 
 var devNull *os.File
 
+var postgresInitUserOffset int
+
 func init() {
 	pgx.DefaultTypeFormats["json"] = pgx.BinaryFormatCode
 	// blackhole
@@ -320,8 +322,11 @@ func (p *postgres) init() error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to compile app source: %s", err)
 	}
+	marker := "//CONFIG//"
+	// record the offset to usercode
+	postgresInitUserOffset = strings.Index(postgresInitScript, marker)
 	// compile sql
-	sql := strings.Replace(postgresInitScript, "//CONFIG//", string(js.Bytes()), 1)
+	sql := strings.Replace(postgresInitScript, marker, string(js.Bytes()), 1)
 	p.log.src = &sql
 	// exec sql
 	cmd, err = p.command("psql", "-v", "ON_ERROR_STOP=1")

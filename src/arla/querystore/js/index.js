@@ -12,28 +12,19 @@ import gql from "./graphql"
 		actions[name] = fn;
 	}
 
-	function addListener(kind, op, table, fn){
-		table.trim().split(/\s/g).forEach(function(table){
-			listeners[table] = op.trim().split(/\s/g).reduce(function(ops, op){
-				ops[kind + '-' + op].push(fn);
-				return ops;
-			}, listeners[table] || {
-				'before-update': [],
-				'after-update' : [],
-				'before-insert': [],
-				'after-insert' : [],
-				'before-delete': [],
-				'after-delete' : []
-			});
+	function addListener(kind, op, klass, fn){
+		fn.klass = klass;
+		listeners[klass.name] = op.trim().split(/\s/g).reduce(function(ops, op){
+			ops[kind + '-' + op].push(fn);
+			return ops;
+		}, listeners[klass.name] || {
+			'before-update': [],
+			'after-update' : [],
+			'before-insert': [],
+			'after-insert' : [],
+			'before-delete': [],
+			'after-delete' : []
 		});
-	}
-
-	function before(op, table, fn){
-		addListener('before', op, table, fn);
-	}
-
-	function after(op, table, fn){
-		addListener('after', op, table, fn);
 	}
 
 	function col({type = 'text', nullable = false, def = undefined, pk = false, onDelete = 'CASCADE', onUpdate = 'RESTRICT', ref} = {}) {
@@ -70,7 +61,6 @@ import gql from "./graphql"
 	}
 
 	function define(name, klass){
-		console.log('defining', name);
 		klass.name = name;
 		if( !klass.id ){
 			klass.id = {type:'uuid', pk:true, def:'uuid_generate_v4()'}
@@ -106,29 +96,30 @@ import gql from "./graphql"
 				alter(`CREATE ${ idx.unique ? 'UNIQUE' : '' } INDEX ${ name }_${ k }_idx ON ${ plv8.quote_ident(name) } ${ using } ( ${ idx.on.map(c => plv8.quote_ident(c) ).join(',') } )` );
 			}
 		}
-		if( klass.beforeChange ){
-			before('insert update', name, klass.beforeChange);
+		let kp = klass.prototype;
+		if( kp.beforeChange ){
+			addListener('before', 'insert update', klass, kp.beforeChange);
 		}
-		if( klass.afterChange ){
-			after('insert update', name, klass.afterChange);
+		if( kp.afterChange ){
+			addListener('after','insert update', klass, kp.afterChange);
 		}
-		if( klass.beforeUpdate ){
-			before('update', name, klass.beforeUpdate);
+		if( kp.beforeUpdate ){
+			addListener('before','update', klass, kp.beforeUpdate);
 		}
-		if( klass.afterUpdate ){
-			after('update', name, klass.afterUpdate);
+		if( kp.afterUpdate ){
+			addListener('after','update', klass, kp.afterUpdate);
 		}
-		if( klass.beforeInsert ){
-			before('insert', name, klass.beforeInsert);
+		if( kp.beforeInsert ){
+			addListener('before','insert', klass, kp.beforeInsert);
 		}
-		if( klass.afterInsert ){
-			after('insert', name, klass.afterInsert);
+		if( kp.afterInsert ){
+			addListener('after','insert', klass, kp.afterInsert);
 		}
-		if( klass.beforeDelete ){
-			before('delete', name, klass.beforeDelete);
+		if( kp.beforeDelete ){
+			addListener('before','delete', klass, kp.beforeDelete);
 		}
-		if( klass.afterDelete ){
-			after('delete', name, klass.afterDelete);
+		if( kp.afterDelete ){
+			addListener('after','delete', klass, kp.afterDelete);
 		}
 		schema[name] = klass;
 	}
@@ -172,12 +163,11 @@ import gql from "./graphql"
 			return o;
 		},{});
 		cxt.session = session;
-		console.log('CXT', cxt);
 		// fetch the sql query
 		let sql = property.query.apply(cxt, ast.args);
 		// interpolate any variables into the sql
 		if( Array.isArray(sql) ){
-			sql = sql[0].replace(/\$(\d+)/, function(match, ns){
+			sql = sql[0].replace(/\$(\d+)/g, function(match, ns){
 				let n = parseInt(ns,10);
 				if( n <= 0 ){
 					throw new Error(`invalid placeholder name: \$${ns}`);
@@ -252,7 +242,21 @@ import gql from "./graphql"
 				return;
 			}
 			triggers.forEach(function(fn){
-				fn.apply(e.record,[e]);
+				let r = new fn.klass();
+				for(var k in e.record){
+					r[k] = e.record[k];
+				}
+				try{
+					fn.apply(r,[e]);
+				}catch(e){
+					if(e.stack){
+						console.debug(e.stack);
+					}
+					throw e;
+				}
+				for(var k in e.record){
+					e.record[k] = r[k];
+				}
 			});
 		});
 		return e.record;
@@ -267,9 +271,9 @@ import gql from "./graphql"
 		var fn = actions[name];
 		if( !fn ){
 			if( /^[a-zA-Z0-9_]+$/.test(name) ){
-				throw `no such action ${name}`;
+				throw new Error(`no such action ${name}`);
 			} else {
-				throw 'invalid action';
+				throw new Error('invalid action');
 			}
 		}
 		// exec the mutation func
@@ -285,7 +289,7 @@ import gql from "./graphql"
 		}
 		// ensure first arg is valid
 		if( typeof queryArgs[0] != 'string' ){
-			throw 'invalid response from action. should be: [sqlstring, ...args]';
+			throw new Error('invalid response from action. should be: [sqlstring, ...args]');
 		}
 		// run the query returned from the mutation func
 		return db.query(...queryArgs);
@@ -304,7 +308,7 @@ import gql from "./graphql"
 			if( err.line && err.offset ){
 				console.warn( query.split(/\n/)[err.line-1] );
 				console.warn( `${ Array(err.column).join('-') }^` );
-				err = new Error(`arla_query: line ${err.line}, column ${err.column}: ${err.message}`)
+				err = new SyntaxError(`arla_query: line ${err.line}, column ${err.column}: ${err.message}`)
 			}
 			throw err;
 		}
