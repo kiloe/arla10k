@@ -53,11 +53,12 @@ clean:
 	rm -f src/arla/querystore/postgres_init.go
 	rm -f $(SQL)/02_js.sql
 	rm -f $(JS)/graphql.js
-	$(DELETE) -rf src/code.google.com/ src/github.com/ src/golang.org/
+	#$(DELETE) -rf src/code.google.com/ src/github.com/ src/golang.org/
 	docker rmi -f $(IMAGE) 2>/dev/null || true
 
 
 test-arla: all
+	$(GO) get -t arla
 	$(GO) test -v arla
 
 test: all

@@ -309,6 +309,7 @@ func (p *postgres) init() error {
 		p.cfg.Path, "-t", "[",
 		"/usr/local/lib/node_modules/babelify",
 		"--modules", "common",
+		"--stage", "0",
 		"]")
 	if err != nil {
 		return err

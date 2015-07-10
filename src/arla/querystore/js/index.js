@@ -36,7 +36,7 @@ import gql from "./graphql"
 		addListener('after', op, table, fn);
 	}
 
-	function col({type = 'text', nullable = false, def = undefined, onDelete = 'CASCADE', onUpdate = 'RESTRICT', ref} = {}) {
+	function col({type = 'text', nullable = false, def = undefined, pk = false, onDelete = 'CASCADE', onUpdate = 'RESTRICT', ref} = {}) {
 		if( type == 'timestamp' ){
 			type = 'timestamptz'; // never use non timezone stamp - it's bad news.
 		}
@@ -57,68 +57,77 @@ import gql from "./graphql"
 			default:          def = null;      break;
 			}
 		}
+		if( pk ){
+			x.push('PRIMARY KEY')
+		}
 		if( def !== null ){
 			x.push(`DEFAULT ${ def }`);
 		}
 		return x.join(' ');
 	}
 
-	function define(name, o){
+	function define(name, klass){
 		console.log('defining', name);
-		if( !o.properties ){
-			o.properties = {};
+		klass.name = name;
+		if( !klass.id ){
+			klass.id = {type:'uuid', pk:true, def:'uuid_generate_v4()'}
 		}
-		if( !o.edges ){
-			o.edges = {};
-		}
+		let columns = Object.keys(klass).reduce(function(props, k){
+			if(!klass[k].type){
+				return props;
+			}
+			klass[k].name = k;
+			klass[k].klass = klass;
+			if(klass[k].query){
+				return props;
+			}
+			props.push(klass[k]);
+			return props;
+		},[]);
+
 		let alter = function(stmt){
 			if(name != 'root'){
 				ddl.push(stmt)
 			}
 		}
-		o.name = name;
 		alter(`CREATE TABLE ${ plv8.quote_ident(name) } ()`);
 		alter(`CREATE TRIGGER before_trigger BEFORE INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('before')`);
 		alter(`CREATE CONSTRAINT TRIGGER after_trigger AFTER INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('after')`);
-		for(let k in o.properties){
-			alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(k) } ${ col(o.properties[k]) }`);
-		}
-		if( !o.properties.id ){
-			alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN id UUID PRIMARY KEY DEFAULT uuid_generate_v4()`);
-			o.properties.id = {type:'uuid'};
-		}
-		if( o.indexes ){
-			for(let k in o.indexes){
-				let idx = o.indexes[k];
+		columns.forEach(function(p){
+			alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(p.name) } ${ col(p) }`);
+		})
+		if( klass.indexes ){
+			for(let k in klass.indexes){
+				let idx = klass.indexes[k];
 				let using = idx.using ? `USING ${ idx.using }` : '';
 				alter(`CREATE ${ idx.unique ? 'UNIQUE' : '' } INDEX ${ name }_${ k }_idx ON ${ plv8.quote_ident(name) } ${ using } ( ${ idx.on.map(c => plv8.quote_ident(c) ).join(',') } )` );
 			}
 		}
-		if( o.beforeChange ){
-			before('insert update', name, o.beforeChange);
+		if( klass.beforeChange ){
+			before('insert update', name, klass.beforeChange);
 		}
-		if( o.afterChange ){
-			after('insert update', name, o.afterChange);
+		if( klass.afterChange ){
+			after('insert update', name, klass.afterChange);
 		}
-		if( o.beforeUpdate ){
-			before('update', name, o.beforeUpdate);
+		if( klass.beforeUpdate ){
+			before('update', name, klass.beforeUpdate);
 		}
-		if( o.afterUpdate ){
-			after('update', name, o.afterUpdate);
+		if( klass.afterUpdate ){
+			after('update', name, klass.afterUpdate);
 		}
-		if( o.beforeInsert ){
-			before('insert', name, o.beforeInsert);
+		if( klass.beforeInsert ){
+			before('insert', name, klass.beforeInsert);
 		}
-		if( o.afterInsert ){
-			after('insert', name, o.afterInsert);
+		if( klass.afterInsert ){
+			after('insert', name, klass.afterInsert);
 		}
-		if( o.beforeDelete ){
-			before('delete', name, o.beforeDelete);
+		if( klass.beforeDelete ){
+			before('delete', name, klass.beforeDelete);
 		}
-		if( o.afterDelete ){
-			after('delete', name, o.afterDelete);
+		if( klass.afterDelete ){
+			after('delete', name, klass.afterDelete);
 		}
-		schema[name] = o;
+		schema[name] = klass;
 	}
 
 	function defineJoin(tables, o){
@@ -140,75 +149,83 @@ import gql from "./graphql"
 
 	var PARENT_MATCH = /\$this/g;
 
-	function gqlToSql(token, {name, properties, edges}, {args, props, filters}, parent, i = 0, pl = 0){
-		let cols = Object.keys(props || {}).map(function(k){
-			var o = props[k];
-			switch(o.kind){
-			case 'property':
-				if( !parent ){
-					throw `the root entity does not have any properties: ${k} is not valid here`;
+	function sqlForProperty(property, session, ast, alias, i=0){
+		// simple property fetch
+		if( !property.query ){
+			return `${ alias }.${property.name}`;
+		}
+		// build context that can be used to reference parent table
+		let cxt = Object.keys(property.klass).reduce(function(o, k){
+			o[k] = alias+'.'+k;
+			o[k].ident = true;
+			return o;
+		},{});
+		cxt.current_user = session;
+		// fetch the sql query
+		let sql = property.query.apply(cxt, ast.args);
+		// interpolate any variables into the sql
+		if( Array.isArray(sql) ){
+			sql = sql[0].replace(/\$(\d+)/, function(match, ns){
+				let n = parseInt(ns,10);
+				if( n <= 0 ){
+					throw new Error(`invalid placeholder name: \$${ns}`);
 				}
-				return `${ parent }.${ k }`;
-			case 'edge':
-				let x = `x${ i }`;
-				let q = `q${ i }`;
-				let call = edges[k];
-				if( !call ){
-					throw `no such edge ${k} for ${name}`;
+				if( sql.length-1 < n ){
+					throw new Error(`no variable for placeholder: \$${ns}`);
 				}
-				let edge = call.apply(token, o.args);
-				if( !edge.query ){
-					throw `missing query for edge call ${k} on ${name}`;
+				if( sql[n].ident ){
+					return plv8.quote_ident(sql[n]);
 				}
-				let sql = edge.query;
-				if( Array.isArray(sql) ){
-					sql = sql[0].replace(/\$(\d+)/, function(match, ns){
-						let n = parseInt(ns,10);
-						if( n <= 0 ){
-							throw `invalid placeholder name: \$${ns}`;
-						}
-						if( sql.length-1 < n ){
-							throw `no variable for placeholder: \$${ns}`;
-						}
-						return plv8.quote_literal(sql[n]);
-					});
-				}
-				if( !sql ){
-					throw `no query sql returned from edge call: ${k} on ${name}`;
-				}
-				// Replace special variables
-				sql = sql.replace(PARENT_MATCH, function(match){
-					if( !parent ){
-						throw "Cannot use $this table replacement on root calls";
-					}
-					return plv8.quote_ident(parent);
-				});
-				let jsonfn = edge.type == 'array' ? 'json_agg' : 'row_to_json';
-				let type = (edge.type == 'array' ? edge.of : edge.type) || 'raw';
-				if( type == 'raw' ){
-					return `
-						(with
-							${q} as ( ${ sql } )
-							select ${jsonfn}(${q}.*) from ${q}
-						) as ${k}
-					`;
-				}
-				let table = schema[type];
-				if( !table ){
-					throw `unknown return type ${type} for edge call ${k} on ${name}`
-				}
-				return `
-					(with
-						${q} as ( ${ sql } ),
-						${x} as ( ${gqlToSql(token, table, o, q, ++i)} from ${q} )
-						select ${jsonfn}(${x}.*) from ${x}
-					) as ${k}
-				`;
-			default:
-				throw `unknown property type: ${o.kind}`
+				return plv8.quote_literal(sql[n]);
+			});
+		}
+		// no query returned
+		if( !sql ){
+			throw new Error(`no query sql returned from edge call: ${property.name} on ${property.klass.name}`);
+		}
+		let jsonfn = 'row_to_json';
+		let type = property.type;
+		if( type == 'array' ){
+			jsonfn = 'json_agg';
+			type = property.of;
+			if( !type ){
+				throw new Error(`${property.klass.name} ${property.name} declares an array type but without an 'of' type set`);
 			}
-		});
-		return `select ${cols.join(',')}`;
+		}
+		let x = `x${ i }`;
+		let q = `q${ i }`;
+		if( type == 'raw' ){
+			return `
+				(with
+					${q} as ( ${ sql } )
+					select ${jsonfn}(${q}.*) from ${q}
+				) as ${property.name}
+			`;
+		}
+		return `
+			(with
+				${q} as ( ${ sql } ),
+				${x} as ( ${sqlForClass(schema[type], session, ast, q, ++i)} from ${q} )
+				select ${jsonfn}(${x}.*) from ${x}
+			) as ${property.name}
+		`;
+	}
+
+	function sqlForClass(klass, session, ast, alias, i = 0){
+		return "select " + Object.keys(ast.props).reduce(function(cols, k){
+			let property = klass[k];
+			if( !property ){
+				throw new Error(`${klass.name} has no property ${k}`)
+			}
+			if( !property.type ){
+				throw new Error(`${klass.name}#${k} is not a valid property type`)
+			}
+			let sql = sqlForProperty(property, session, ast.props[k], alias, i);
+			if( sql ){
+				cols.push(sql);
+			}
+			return cols;
+		},[]).join(',');
 	}
 
 	arla.trigger = function(e){
@@ -234,7 +251,7 @@ import gql from "./graphql"
 		return true;
 	};
 
-	arla.exec = function(name, token, args){
+	arla.exec = function(name, session, args){
 		var fn = actions[name];
 		if( !fn ){
 			if( /^[a-zA-Z0-9_]+$/.test(name) ){
@@ -245,7 +262,7 @@ import gql from "./graphql"
 		}
 		// exec the mutation func
 		console.debug(`action ${name} given`, args);
-		var queryArgs = fn.apply(token, args);
+		var queryArgs = fn.apply(session, args);
 		if( !queryArgs ){
 			console.debug(`action ${name} was a noop`);
 			return [];
@@ -262,19 +279,15 @@ import gql from "./graphql"
 		return db.query(...queryArgs);
 	};
 
-	arla.query = function(token, query){
+	arla.query = function(session, query){
 		if( !query ){
 			throw new SyntaxError('arla_query: query text cannot be null');
 		}
 		query = `root(){ ${query} }`;
+		console.debug("QUERY:", query);
+		let ast;
 		try{
-			console.debug("QUERY:", token, query);
-			let ast = gql.parse(query);
-			console.debug("AST:", ast);
-			let sql = gqlToSql( token, schema.root, ast[0]);
-			let res = db.query(sql)[0];
-			console.debug("RESULT", res);
-			return res;
+			ast = gql.parse(query);
 		}catch(err){
 			if( err.line && err.offset ){
 				console.warn( query.split(/\n/)[err.line-1] );
@@ -283,6 +296,11 @@ import gql from "./graphql"
 			}
 			throw err;
 		}
+		console.debug("AST:", ast);
+		let sql = sqlForClass(schema.root, session, ast[0]);
+		let res = db.query(sql)[0];
+		console.debug("RESULT", res);
+		return res;
 	};
 
 	arla.authenticate = function(values){
