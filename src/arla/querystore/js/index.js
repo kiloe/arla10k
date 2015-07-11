@@ -85,6 +85,15 @@ class UserError extends Error {
 			klass[k].name = k;
 			klass[k].klass = klass;
 			if(klass[k].query){
+        // add the magic _count property
+        if( klass[k].type == 'array' && !klass[k+'_count']){
+          klass[k+'_count'] = {
+            name: k+'_count',
+            klass: klass,
+            type: 'counter',
+            queryName: k
+          }
+        }
 				return props;
 			}
 			props.push(klass[k]);
@@ -162,11 +171,17 @@ class UserError extends Error {
 	function sqlForProperty(klass, session, ast, alias, i=0){
 		let property = klass[ast.name];
 		if( !property ){
-			throw new Error(`${klass.name} has no property ${ast.name}`)
+			throw new UserError(`${klass.name} has no property ${ast.name}`)
 		}
 		if( !property.type ){
-			throw new Error(`${klass.name} does not have a valid property ${ast.name}`)
+			throw new UserError(`${klass.name} does not have a valid property ${ast.name}`)
 		}
+    // if this is a counter then get the _real_ property
+    let counter = null;
+    if( property.type == 'counter' ){
+      counter = property;
+      property = klass[property.queryName];
+    }
 		// simple property fetch
 		if( !property.query ){
 			return `${ alias }.${property.name}`;
@@ -186,10 +201,10 @@ class UserError extends Error {
 			sql = sql[0].replace(/\$(\d+)/g, function(match, ns){
 				let n = parseInt(ns,10);
 				if( n <= 0 ){
-					throw new Error(`invalid placeholder name: \$${ns}`);
+					throw new UserError(`invalid placeholder name: \$${ns}`);
 				}
 				if( sql.length-1 < n ){
-					throw new Error(`no variable for placeholder: \$${ns}`);
+					throw new UserError(`no variable for placeholder: \$${ns}`);
 				}
 				if( typeof sql[n] == 'undefined' ){
 					console.warn(`placeholder variable ${n} is undefined in query for ${klass.name} ${property.name}`);
@@ -202,31 +217,42 @@ class UserError extends Error {
 		}
 		// no query returned
 		if( !sql ){
-			throw new Error(`no query sql returned from edge call: ${property.name} on ${klass.name}`);
+			throw new UserError(`no query sql returned from edge call: ${property.name} on ${klass.name}`);
 		}
 		let jsonfn = 'row_to_json';
 		let jsondef = '{}';
 		let type = property.type;
+
 		if( type == 'array' ){
 			jsonfn = 'json_agg';
 			jsondef = '[]';
 			type = property.of;
 			if( !type ){
-				throw new Error(`${klass.name} ${property.name} declares an array type but without an 'of' type set`);
+				throw new UserError(`${klass.name} ${property.name} declares an array type but without an 'of' type set`);
 			}
-		}
+		} else if( ['int', 'integer', 'text', 'uuid'].indexOf(type) >= 0 ){
+      return `(${sql}) as ${property.name}`;
+    }
 		let x = `x${ i }`;
 		let q = `q${ i }`;
-		if( type == 'raw' ){
+    if( counter ){
+      return `
+        (with
+          ${q} as ( ${ sql })
+          select count(*) from ${q}
+        ) as ${counter.name}
+      `;
+    }
+    if( ['int', 'integer', 'text', 'uuid', 'json'].indexOf(type) >= 0 ){
 			return `
 				(with
 					${q} as ( ${ sql } )
-					select ${jsonfn}(${q}.*) from ${q}
+					select coalesce(${jsonfn}(${q}.*),'${jsondef}'::json) from ${q}
 				) as ${property.name}
 			`;
-		}
+    }
 		if( !ast.props || ast.props.length === 0 ){
-			throw new Error(`${klass.name} ${property.name} is a call and as such requires the form ${property.name}(){ field_a, field_b, etc..}`);
+			throw new UserError(`${klass.name} ${property.name} is a call to a type with multiple fields and as such requires the form ${property.name}(){ field_a, field_b, etc..}`);
 		}
 		return `
 			(with
@@ -239,7 +265,7 @@ class UserError extends Error {
 
 	function sqlForClass(klass, session, ast, alias, i = 0){
 		if(ast.kind == 'property'){
-			throw new Error('invalid query expected property definitions');
+			throw new UserError('invalid query: expected property definitions');
 		}
 		return "select " + Object.keys(ast.props).map(function(k){
 			return sqlForProperty(klass, session, ast.props[k], alias, i)

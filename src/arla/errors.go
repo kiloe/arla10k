@@ -28,7 +28,7 @@ func userError(err error) *Error {
 	}
 	if pgerr, ok := err.(pgx.PgError); ok {
 		if strings.HasPrefix(pgerr.Message, "UserError:") {
-			e.Message = strings.Replace(pgerr.Message, "UserError:", "", 1)
+			e.Message = strings.Replace(pgerr.Message, "UserError: ", "", 1)
 		}
 	}
 	return e

@@ -152,6 +152,18 @@ var testCases = []*TC{
 	},
 
 	&TC{
+		Name:   "dynamically computed property uppername should return BOB",
+		Method: POST,
+		URL:    "/query",
+		User:   bob,
+		Type:   TextPlain,
+		Body: `
+      me(){uppername}
+    `,
+		ResBody: `{"me":{"uppername":"BOB"}}`,
+	},
+
+	&TC{
 		Name:   "add an email address for bob",
 		Method: POST,
 		URL:    "/exec",
@@ -465,6 +477,19 @@ var testCases = []*TC{
 			}
 		`,
 		ResFunc: isOK,
+	},
+
+	&TC{
+		Name:   "magic _count property should only show one address remaining due to cascading deletes",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+			email_addresses_count
+    `,
+		ResBody: `
+			{"email_addresses_count":1}`,
 	},
 }
 
