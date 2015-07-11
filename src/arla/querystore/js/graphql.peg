@@ -1,4 +1,25 @@
 {
+	// ---------- for lax json
+	function flatten(a) {
+		if (a instanceof Array) {
+			var result = "";
+			for (var i=0; i < a.length; i++) {
+				result += flatten(a[i]);
+			}
+			return result;
+		} else {
+			return "" + a;
+		}
+	}
+
+	// Special object as null replacement
+	var NULL_OBJECT = {};
+
+	function getValue(value) {
+		return value === NULL_OBJECT ? null : value;
+	}
+	// --------------------
+
 	function deepmerge(target, src) {
 		var array = Array.isArray(src);
 		var dst = array && [] || {};
@@ -41,35 +62,45 @@
 	}
 	function flat(props){
 	  return props.reduce(function(o, p){
-		if( !o[p.name] ){
-		  o[p.name] = p;
+		var alias = p.alias || p.name;
+		if( !o[alias] ){
+		  o[alias] = p;
 		  return o;
 		}
 		if( p.kind == 'property' ){
-		  if( o[p.name].kind != 'property' ){
-			throw "property " + p.name + " clashes with call of same name";
+		  if( o[alias].kind != 'property' ){
+				throw "property " + alias + " clashes with call of same name";
 		  }
 		  return o;
 		}
-		o[p.name] = deepmerge(o[p.name], p);
+		o[alias] = deepmerge(o[alias], p);
 		return o;
 	  }, {});
 	}
 	function expression(e, props){
 		if(!e[0][0]){
-throw 'invalid name';
-}
+			throw 'invalid name';
+		}
 	  var o = {
-		kind: 'edge',
-		name: e[0][0],
-		filters: e.slice(1).reduce(function(o, f){
-		  o[ f[0] ] = f[1];
-		  return o;
-		},{}),
-		props:flat(props),
-		args: e[0][1]
+			kind: 'edge',
+			name: e[0][0],
+			filters: e.slice(1).reduce(function(o, f){
+			  o[ f[0] ] = f[1];
+			  return o;
+			},{}),
+			props:flat(props),
+			args: e[0][1]
 	  }
 	  return o;
+	}
+	function property(name){
+		return {
+			kind: 'property',
+			name: name,
+			filters: [],
+			props: [],
+			args: []
+		}
 	}
 }
 
@@ -86,22 +117,10 @@ call_expr_parent
   = p:call_expr "." { return p }
 
 call_expr
-  = name:$[a-zA-Z0-9_]+ args:call_expr_args? { return [name,args] }
+  = name:name args:call_expr_args? { return [name,args] }
 
 call_expr_args
-  = "(" args:(first_arg / arg)* ")" { return args }
-
-first_arg
-  = ws* arg:$arg ws* "," { return arg }
-
-arg
-  = quoted_text_arg / text_arg
-
-quoted_text_arg
-  = "'" a:text_arg "'" { return a }
-
-text_arg
-  = a:$[a-zA-Z0-9!=>\-< \t]+ { return a.trim() }
+  = "(" args:json* ")" { return args }
 
 property_list
   = p:(property_list_item*) { return p }
@@ -110,10 +129,16 @@ property_list_item
   = ws* p:property { return p }
 
 property
-  = p:(call / name) comma {return p}
+  = a:alias? p:(call / property_name) comma { if(a){p.alias=a}; return p }
+
+alias
+	= ws* a:name ":" { return a }
+
+property_name
+	= ws* name:name { return property(name) }
 
 name
-  = ws* name:$[a-zA-Z_0-9]+ { return {kind: 'property', name: name} }
+  = name:$[a-zA-Z_0-9]+ { return name }
 
 comma
   = ws* ("," / ws*)
@@ -129,3 +154,225 @@ ws
 
 integer "integer"
   = digits:[0-9]+ { return parseInt(digits.join(""), 10); }
+
+// -------------- json parsing -----------------
+// https://github.com/jceme/RelaxedJsonParser/blob/master/src/PegjsJsonParser.pegjs
+
+json =
+	WS* val:value WS*
+{
+	return (function(undefined) {
+		return val === NULL_OBJECT ? undefined : val;
+	})();
+}
+
+
+object "object" =
+	'{'
+	CWS*
+	p:(
+		sp:pair CWS*
+		{
+			return sp;
+		}
+	)*
+	'}'
+{
+	var result = {}, i, len = p.length, b;
+	for (i=0; i < len; i++) {
+		b = p[i];
+		result[b.id] = b.val;
+	}
+	return result;
+}
+
+
+pair "objectPair" =
+	id:( string / key )
+	WS*
+	':'
+	WS*
+	val:value
+{
+	return { id: flatten(id), val: getValue(val) };
+}
+
+
+key "key" = [a-zA-Z0-9_$]+
+
+
+array "array" =
+	'['
+	CWS*
+	vals:(
+		v:value CWS*
+		{
+			return v;
+		}
+	)*
+	']'
+{
+	return vals.map(function(val) {
+		return getValue(val);
+	});
+}
+
+
+value =
+	object
+	/ array
+	/ string
+	/ boolean
+	/ null
+	/ number
+
+
+boolean "boolean" =
+		'true'i
+		{
+			return true;
+		}
+	/	'false'i
+		{
+			return false;
+		}
+
+null "null" =
+	'null'i
+{
+	return NULL_OBJECT;
+}
+
+
+
+string "string" =
+		(
+			'"'
+			s:(
+				(
+					'\\'
+					e:escseq
+					{
+						return e;
+					}
+				)
+			/	[^\\"]
+			)*
+			'"'
+		)
+		{
+			return flatten(s);
+		}
+	/	(
+			"'"
+			s:(
+				(
+					'\\'
+					e:escseq
+					{
+						return e;
+					}
+				)
+			/	[^\\']
+			)*
+			"'"
+		)
+		{
+			return flatten(s);
+		}
+
+escseq =
+		(
+			k:[bfnrt]
+			{
+				switch (k) {
+					case "b": return "\b";
+					case "f": return "\f";
+					case "n": return "\n";
+					case "r": return "\r";
+					default:  return "\t";
+				}
+			}
+		)
+	/	(
+			'u' hd:(hexdigit hexdigit hexdigit hexdigit)
+			{
+				return String.fromCharCode(parseInt(flatten(hd), 16));
+			}
+		)
+	/	(
+			// Any other escaped char is passed as is
+			j:.
+			{
+				return j;
+			}
+		)
+
+
+number "number" =
+n:(
+	sign?
+	(
+		(
+			'0' [xX] hexdigit+
+		)
+		/ (
+			'0' digit+
+		)
+		/ (
+			(
+				(
+					( '0' / (Digit digit*) )
+					( '.' digit+ )?
+				)
+			/	( '.' digit+ )
+			)
+			exponent?
+		)
+	)
+)
+{
+	var fn = flatten(n);
+
+	if (/^[+-]?0[xX]/.test(fn)) {
+		return parseInt(fn, 16);
+	}
+
+	if (/^[+-]?0[0-7]+$/.test(fn)) {
+		return parseInt(fn, 8);
+	}
+
+	return parseFloat(fn);
+}
+
+sign = [+-]
+
+exponent =
+	[eE]
+	sign?
+	digit+
+
+Digit = [1-9]
+
+digit = [0-9]
+
+hexdigit = [0-9a-fA-F]
+
+
+WS "whitespace" = [ \t\n\r] / COMMENT
+
+CWS "whitespace" = [ \t\n\r,] / COMMENT
+
+COMMENT "comment" = LINE_COMMENT / MULTI_COMMENT
+
+LINE_COMMENT "line comment" =
+	'//'
+	[^\n\r]*
+
+MULTI_COMMENT "multi-line comment" =
+	'/*'
+	(
+		[^*]
+		/ ('*' &[^/])
+	)*
+	'*/'

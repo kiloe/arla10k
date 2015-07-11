@@ -111,32 +111,31 @@ func NewLogFormatter(w io.Writer) *LogFormatter {
 					if lineNo, err := strconv.Atoi(plv8err.FindStringSubmatch(line)[1]); err == nil {
 						// add offset to the plv8_init function
 						lineNo += 4
-						if lineNo > postgresInitUserOffset {
-							// build context
-							amt := 8
-							var buf bytes.Buffer
-							src := strings.Split(*log.src, "\n")
-							start := lineNo - amt
-							if start < 0 {
-								start = 0
-							}
-							end := lineNo + amt
-							if end > len(src)-1 {
-								end = len(src) - 1
-							}
-							for i := start; i < end; i++ {
-								xtra := ""
-								col := ansi.White
-								if i == lineNo {
-									col = ansi.LightWhite
-									xtra = fmt.Sprint(ansi.Reset, ansi.Red, "<--- something wrong here", ansi.Reset)
-								}
-								fmt.Fprintln(&buf, ansi.Reset, col, src[i], ansi.Reset, xtra)
-							}
-							line = buf.String()
-						} else {
-							continue
+						// if lineNo < postgresInitUserOffset {
+						// 	continue
+						// }
+						// build context
+						amt := 8
+						var buf bytes.Buffer
+						src := strings.Split(*log.src, "\n")
+						start := lineNo - amt
+						if start < 0 {
+							start = 0
 						}
+						end := lineNo + amt
+						if end > len(src)-1 {
+							end = len(src) - 1
+						}
+						for i := start; i < end; i++ {
+							xtra := ""
+							col := ansi.White
+							if i == lineNo {
+								col = ansi.LightWhite
+								xtra = fmt.Sprint(ansi.Reset, ansi.Red, "<--- something wrong here", ansi.Reset)
+							}
+							fmt.Fprintln(&buf, ansi.Reset, col, src[i], ansi.Reset, xtra)
+						}
+						line = buf.String()
 					}
 				}
 			}

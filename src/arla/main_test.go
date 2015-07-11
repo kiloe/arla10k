@@ -82,10 +82,10 @@ var (
 		Username: "bob",
 		Password: "bobzpasswerd",
 	}
-	invalid = &user{
+	kate = &user{
 		ID:       schema.TimeUUID(),
-		Username: "not-a-valid-username",
-		Password: "not-a-valid-password",
+		Username: "kate",
+		Password: "katington1",
 	}
 )
 
@@ -122,6 +122,15 @@ var testCases = []*TC{
 		URL:     "/register",
 		Type:    ApplicationJSON,
 		Body:    bob.JSON(),
+		ResFunc: hasKey("access_token"),
+	},
+
+	&TC{
+		Name:    "register kate and get an access token",
+		Method:  POST,
+		URL:     "/register",
+		Type:    ApplicationJSON,
+		Body:    kate.JSON(),
 		ResFunc: hasKey("access_token"),
 	},
 
@@ -275,7 +284,8 @@ var testCases = []*TC{
 			{
 				"members": [
 					{"username":"alice", "email_addresses":[]},
-					{"username":"bob", "email_addresses":[{"addr":"bob@gmail.com"}]}
+					{"username":"bob", "email_addresses":[{"addr":"bob@gmail.com"}]},
+					{"username":"kate","email_addresses":[]}
 				]
 			}
 		`,
@@ -383,7 +393,22 @@ var testCases = []*TC{
 	},
 
 	&TC{
-		Name:   "alice should see bob as a friend",
+		Name:   "kate should be able to make friends with alice",
+		Method: POST,
+		URL:    "/exec",
+		User:   kate,
+		Type:   ApplicationJSON,
+		Body: `
+			{
+				"name": "addFriend",
+				"args": ["` + alice.ID.String() + `"]
+			}
+		`,
+		ResFunc: isOK,
+	},
+
+	&TC{
+		Name:   "alice should see bob and kate as friends",
 		Method: POST,
 		URL:    "/query",
 		User:   alice,
@@ -398,7 +423,95 @@ var testCases = []*TC{
 		ResBody: `
 			{
 				"me":{
-					"friends": [{"username":"bob"}]
+					"friends": [{"username":"bob"},{"username":"kate"}]
+				}
+			}`,
+	},
+
+	&TC{
+		Name:   "bob should only see alice as a friend",
+		Method: POST,
+		URL:    "/query",
+		User:   bob,
+		Type:   TextPlain,
+		Body: `
+      me(){
+				friends() {
+					username
+				}
+			}
+    `,
+		ResBody: `
+			{
+				"me":{
+					"friends": [{"username":"alice"}]
+				}
+			}`,
+	},
+
+	&TC{
+		Name:   "alice wants to be able to fetch just a single friend",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      me(){
+				friends().first() {
+					username
+				}
+			}
+    `,
+		ResBody: `
+			{
+				"me":{
+					"friends": {"username":"bob"}
+				}
+			}`,
+	},
+
+	&TC{
+		Name:   "alice wants to be able to fetch bob and kate at the same time by aliasing",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      me(){
+				bob: friends({id:"` + bob.ID.String() + `"}).first() {
+					username
+				}
+				kate: friends({id:"` + kate.ID.String() + `"}).first() {
+					username
+				}
+			}
+    `,
+		ResBody: `
+			{
+				"me":{
+					"bob": {"username":"bob"},
+					"kate": {"username":"kate"}
+				}
+			}`,
+	},
+
+	&TC{
+		Name:   "alice wants to be able to filter her list of friends by id",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      me(){
+				friends({id: "` + bob.ID.String() + `"}) {
+					id
+				}
+			}
+    `,
+		ResBody: `
+			{
+				"me":{
+					"friends": [{"id":"` + bob.ID.String() + `"}]
 				}
 			}`,
 	},
@@ -422,16 +535,35 @@ var testCases = []*TC{
 				}
 			}
     `,
-		ResBody: `
-			{
-				"me":{
-					"friends": [{"username":"bob", "friends": [{"username":"alice", "friends":[{"username":"bob"}]}]}]
-				}
-			}`,
+		ResBody: `{
+			"me":{
+				"friends":[{
+					"username":"bob",
+					"friends":[{
+						"username":"alice",
+						"friends":[{
+							"username":"bob"
+						},{
+							"username":"kate"
+						}]
+					}]
+				},{
+					"username":"kate",
+					"friends":[{
+						"username":"alice",
+						"friends":[{
+							"username":"bob"
+						},{
+							"username":"kate"
+						}]
+					}]
+				}]
+			}
+		}`,
 	},
 
 	&TC{
-		Name:   "friends can't see friends passwords",
+		Name:   "friends can't see friends passwords as it is never in the parent fields",
 		Method: POST,
 		URL:    "/query",
 		User:   alice,

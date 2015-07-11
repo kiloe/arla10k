@@ -7,7 +7,20 @@ class UserError extends Error {
     var err = super(m);
     Object.assign(this, {
       name: "UserError",
-      message: err.message,
+      message: m,
+      stack: err.stack
+    });
+  }
+}
+
+// QueryError is returned when query parsing fails.
+// It contains the line and context of the error
+class QueryError extends Error {
+  constructor(o) {
+    var err = super(o.message);
+    Object.assign(this, {
+      name: "QueryError",
+      message: JSON.stringify(o),
       stack: err.stack
     });
   }
@@ -168,7 +181,8 @@ class UserError extends Error {
 
 	var PARENT_MATCH = /\$this/g;
 
-	function sqlForProperty(klass, session, ast, alias, i=0){
+	function sqlForProperty(klass, session, ast, i=0){
+    let alias = ast.alias || ast.name;
 		let property = klass[ast.name];
 		if( !property ){
 			throw new UserError(`${klass.name} has no property ${ast.name}`)
@@ -184,13 +198,13 @@ class UserError extends Error {
     }
 		// simple property fetch
 		if( !property.query ){
-			return `${ alias }.${property.name}`;
+			return `$prev.${property.name}`;
 		}
 		// build context that can be used to reference parent table
 		let cxtReverse = {};
 		let cxt = Object.keys(klass).reduce(function(o, k){
-			o[k] = alias+'.'+k;
-			cxtReverse[alias+'.'+k] = true;
+			o[k] = '$prev.'+k;
+			cxtReverse[o[k]] = true;
 			return o;
 		},{});
 		cxt.session = session;
@@ -222,7 +236,18 @@ class UserError extends Error {
 		let jsonfn = 'row_to_json';
 		let jsondef = '{}';
 		let type = property.type;
-
+    if( ast.filters.first ){
+      if( type != 'array' ){
+        throw QueryError({
+          message: `cannot use filter 'first' on non-array property`,
+          property: property.name,
+          type: property.type,
+          kind: klass.name,
+        })
+      }
+      ast.filters.limit = 1;
+      type = property.of;
+    }
 		if( type == 'array' ){
 			jsonfn = 'json_agg';
 			jsondef = '[]';
@@ -231,44 +256,40 @@ class UserError extends Error {
 				throw new UserError(`${klass.name} ${property.name} declares an array type but without an 'of' type set`);
 			}
 		} else if( ['int', 'integer', 'text', 'uuid'].indexOf(type) >= 0 ){
-      return `(${sql}) as ${property.name}`;
+      return `(${sql}) as ${alias}`;
     }
-		let x = `x${ i }`;
-		let q = `q${ i }`;
+    let withs = [sql];
+    if( ast.filters.limit ){
+      withs.unshift(`select * from $prev limit ${plv8.quote_literal(ast.filters.limit)}`)
+    }
     if( counter ){
-      return `
-        (with
-          ${q} as ( ${ sql })
-          select count(*) from ${q}
-        ) as ${counter.name}
-      `;
+      withs.unshift(`select count(*) from $prev`);
+    }else{
+      if( schema[type] ){
+        withs.unshift(`${sqlForClass(schema[type], session, ast, i+1)} from $prev`);
+      }
+      withs.unshift(`select coalesce(${jsonfn}($prev.*),'${jsondef}'::json) from $prev`)
     }
-    if( ['int', 'integer', 'text', 'uuid', 'json'].indexOf(type) >= 0 ){
-			return `
-				(with
-					${q} as ( ${ sql } )
-					select coalesce(${jsonfn}(${q}.*),'${jsondef}'::json) from ${q}
-				) as ${property.name}
-			`;
-    }
-		if( !ast.props || ast.props.length === 0 ){
-			throw new UserError(`${klass.name} ${property.name} is a call to a type with multiple fields and as such requires the form ${property.name}(){ field_a, field_b, etc..}`);
-		}
-		return `
-			(with
-				${q} as ( ${ sql } ),
-				${x} as ( ${sqlForClass(schema[type], session, ast, q, ++i)} from ${q} )
-				select coalesce(${jsonfn}(${x}.*),'${jsondef}'::json) from ${x}
-			) as ${property.name}
-		`;
+    return '(with' + withs.reduce(function(w, sql, j){
+      let curr = `q_${i}_${j}`;
+      let prev = `q_${i}_${j+1}`;
+      if( j < withs.length-1 ){ // ignore last (user sql)
+        sql = sql.split('$prev').join(prev)
+      }
+      if( j > 0 ){
+        let comma = j > 1 ? ',' : '';
+        return `\n${curr} as (${sql}) ${comma}` + w;
+      }
+      return `\n${sql}` + w;
+    },'') + `\n) as ${alias}`;
 	}
 
-	function sqlForClass(klass, session, ast, alias, i = 0){
+	function sqlForClass(klass, session, ast, i = 0){
 		if(ast.kind == 'property'){
 			throw new UserError('invalid query: expected property definitions');
 		}
 		return "select " + Object.keys(ast.props).map(function(k){
-			return sqlForProperty(klass, session, ast.props[k], alias, i)
+			return sqlForProperty(klass, session, ast.props[k], i)
 		}).join(',');
 	}
 
@@ -351,7 +372,7 @@ class UserError extends Error {
 
 	arla.query = function(session, query){
 		if( !query ){
-			throw new SyntaxError('arla_query: query text cannot be null');
+			throw new QueryError({error:'arla_query: query text cannot be null'});
 		}
 		query = `root(){ ${query} }`;
 		console.debug("QUERY:", query);
@@ -362,7 +383,13 @@ class UserError extends Error {
 			if( err.line && err.offset ){
 				console.warn( query.split(/\n/)[err.line-1] );
 				console.warn( `${ Array(err.column).join('-') }^` );
-				err = new SyntaxError(`arla_query: line ${err.line}, column ${err.column}: ${err.message}`)
+				err = new QueryError({
+          line: err.line,
+          column: err.column,
+          offset: err.offset,
+          error: err.message,
+          context: query
+        });
 			}
 			throw err;
 		}

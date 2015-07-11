@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 )
@@ -12,6 +13,14 @@ type Error struct {
 	err     error
 	code    int
 	Message string `json:"error"`
+	// QueryError fields
+	Line     int    `json:"line,omitempty"`
+	Column   int    `json:"column,omitempty"`
+	Offset   int    `json:"offset,omitempty"`
+	Context  string `json:"context,omitempty"`
+	Property string `json:"property,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Kind     string `json:"kind,omitempty"`
 }
 
 func (e *Error) Error() string {
@@ -29,6 +38,10 @@ func userError(err error) *Error {
 	if pgerr, ok := err.(pgx.PgError); ok {
 		if strings.HasPrefix(pgerr.Message, "UserError:") {
 			e.Message = strings.Replace(pgerr.Message, "UserError: ", "", 1)
+		}
+		if strings.HasPrefix(pgerr.Message, "QueryError:") {
+			b := []byte(strings.Replace(pgerr.Message, "QueryError: ", "", 1))
+			json.Unmarshal(b, &e)
 		}
 	}
 	return e
