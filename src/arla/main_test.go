@@ -362,6 +362,29 @@ var testCases = []*TC{
 	},
 
 	&TC{
+		Name:   "pluck just the addrs from each member",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+      members() {
+        username
+				email_addresses().pluck('addr')
+      }
+    `,
+		ResBody: `
+			{
+				"members": [
+					{"username":"alice", "email_addresses":["alice@alice.com"]},
+					{"username":"bob", "email_addresses":["bob@gmail.com"]},
+					{"username":"kate","email_addresses":[]}
+				]
+			}
+		`,
+	},
+
+	&TC{
 		Name:   "alice should be able to make friends with bob",
 		Method: POST,
 		URL:    "/exec",
@@ -612,16 +635,16 @@ var testCases = []*TC{
 	},
 
 	&TC{
-		Name:   "magic _count property should only show one address remaining due to cascading deletes",
+		Name:   "count() should only show one address remaining due to cascading deletes",
 		Method: POST,
 		URL:    "/query",
 		User:   alice,
 		Type:   TextPlain,
 		Body: `
-			email_addresses_count
+			remaining: email_addresses.count()
     `,
 		ResBody: `
-			{"email_addresses_count":1}`,
+			{"remaining":1}`,
 	},
 }
 

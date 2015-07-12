@@ -182,6 +182,14 @@ class QueryError extends Error {
 	var PARENT_MATCH = /\$this/g;
 
 	function sqlForProperty(klass, session, ast, i=0){
+    let err = function(msg){
+      throw new QueryError({
+        message: msg,
+        property: property.name,
+        type: property.type,
+        kind: klass.name,
+      })
+    }
     let alias = ast.alias || ast.name;
 		let property = klass[ast.name];
 		if( !property ){
@@ -190,12 +198,6 @@ class QueryError extends Error {
 		if( !property.type ){
 			throw new UserError(`${klass.name} does not have a valid property ${ast.name}`)
 		}
-    // if this is a counter then get the _real_ property
-    let counter = null;
-    if( property.type == 'counter' ){
-      counter = property;
-      property = klass[property.queryName];
-    }
 		// simple property fetch
 		if( !property.query ){
 			return `$prev.${property.name}`;
@@ -231,46 +233,91 @@ class QueryError extends Error {
 		}
 		// no query returned
 		if( !sql ){
-			throw new UserError(`no query sql returned from edge call: ${property.name} on ${klass.name}`);
+      err(`${klass.name}.${property.name} did not return a valid sql query`);
 		}
-		let jsonfn = 'row_to_json';
-		let jsondef = '{}';
-		let type = property.type;
-    if( ast.filters.first ){
-      if( type != 'array' ){
-        throw QueryError({
-          message: `cannot use filter 'first' on non-array property`,
-          property: property.name,
-          type: property.type,
-          kind: klass.name,
-        })
-      }
-      ast.filters.limit = 1;
-      type = property.of;
-    }
-		if( type == 'array' ){
-			jsonfn = 'json_agg';
-			jsondef = '[]';
-			type = property.of;
-			if( !type ){
-				throw new UserError(`${klass.name} ${property.name} declares an array type but without an 'of' type set`);
-			}
-		} else if( ['int', 'integer', 'text', 'uuid'].indexOf(type) >= 0 ){
-      return `(${sql}) as ${alias}`;
-    }
     let withs = [sql];
-    if( ast.filters.limit ){
-      withs.unshift(`select * from $prev limit ${plv8.quote_literal(ast.filters.limit)}`)
+    let type = property.type;
+    // if type is a schema-type then build the subquery
+		let targetKlass = schema[property.of || property.type];
+    if( targetKlass ){
+      ast.filters.forEach(function(f){
+        let aggProp = 'id';
+        switch(f.name){
+          case 'pluck':
+            aggProp = f.args[0];
+          case 'count':
+            if( typeof aggProp != 'string' ){
+              err(`filter ${f.name} expects a string argument`);
+            }
+            if( ast.props.length > 0 ){
+              err(`cannot request properties when using ${f.name}`);
+            }
+            if( !targetKlass[aggProp] || targetKlass[aggProp].query ){
+              err(`no property ${propName} for use with filter ${f.name}`);
+            }
+            ast.props.push({
+              name: aggProp,
+              args: [],
+              props: [],
+              filters: [],
+            })
+            break;
+        }
+      });
+      withs.unshift(`${sqlForClass(targetKlass, session, ast, i+1)} from $prev`);
+    } else {
+      type = 'raw';
     }
-    if( counter ){
-      withs.unshift(`select count(*) from $prev`);
-    }else{
-      if( schema[type] ){
-        withs.unshift(`${sqlForClass(schema[type], session, ast, i+1)} from $prev`);
+    ast.filters.forEach(function(f){
+      switch(f.name){
+        case 'first':
+          if( type != 'array' ){
+            err(`cannot use filter ${f.name} on non-array result set`);
+          }
+          if( f.args.length != 0 ){
+            err(`filter ${f.name} does not expect any arguments`);
+          }
+          withs.unshift(`select * from $prev limit 1`);
+          type = property.of;
+          break;
+        case 'pluck':
+          if( type != 'array' ){
+            err(`cannot use filter ${f.name} on non-array result set`);
+          }
+          if( f.args.length != 1 ){
+            err(`filter ${f.name} expects exactly one argument`);
+          }
+          if( typeof f.args[0] != 'string' ){
+            err(`filter ${f.name} expects a string argument`);
+          }
+          let col = f.args[0].replace(/[^a-z0-9_]+/ig, '');
+          withs.unshift(`select coalesce(json_agg($prev.${col}),'[]'::json) from $prev`);
+          type = 'raw';
+          break;
+        case 'count':
+          if( type != 'array' ){
+            err(`cannot use filter ${f.name} on non-array result set`);
+          }
+          if( f.args.length != 0 ){
+            err(`filter ${f.name} does not expect any arguments`);
+          }
+          withs.unshift(`select count(*) from $prev`);
+          type = 'raw';
+          break;
+        default:
+          err(`unknown filter ${f.name}`);
       }
-      withs.unshift(`select coalesce(${jsonfn}($prev.*),'${jsondef}'::json) from $prev`)
+    })
+    if( type != 'raw'){
+  		let jsonfn = 'row_to_json';
+      let jsondef = `'{}'`;
+      if( type == 'array' ){
+        jsonfn = 'json_agg';
+        jsondef = `'[]'`;
+      }
+      withs.unshift(`select coalesce(${jsonfn}($prev.*),${jsondef}::json) from $prev`)
     }
-    return '(with' + withs.reduce(function(w, sql, j){
+    let out = withs.reduce(function(w, sql, j){
       let curr = `q_${i}_${j}`;
       let prev = `q_${i}_${j+1}`;
       if( j < withs.length-1 ){ // ignore last (user sql)
@@ -281,15 +328,17 @@ class QueryError extends Error {
         return `\n${curr} as (${sql}) ${comma}` + w;
       }
       return `\n${sql}` + w;
-    },'') + `\n) as ${alias}`;
+    },'');
+    if( withs.length > 1 ){
+      return `(with ${out}\n) as ${alias}`
+    }else{
+      return `(${out}) as ${alias}`;
+    }
 	}
 
 	function sqlForClass(klass, session, ast, i = 0){
-		if(ast.kind == 'property'){
-			throw new UserError('invalid query: expected property definitions');
-		}
-		return "select " + Object.keys(ast.props).map(function(k){
-			return sqlForProperty(klass, session, ast.props[k], i)
+		return "select " + ast.props.map(function(p){
+			return sqlForProperty(klass, session, p, i)
 		}).join(',');
 	}
 
@@ -380,6 +429,9 @@ class QueryError extends Error {
 		try{
 			ast = gql.parse(query);
 		}catch(err){
+      if(err.stack){
+        console.debug(err.stack);
+      }
 			if( err.line && err.offset ){
 				console.warn( query.split(/\n/)[err.line-1] );
 				console.warn( `${ Array(err.column).join('-') }^` );
@@ -394,7 +446,10 @@ class QueryError extends Error {
 			throw err;
 		}
 		console.debug("AST:", ast);
-		let sql = sqlForClass(schema.root, session, ast[0]);
+    if( ast.name != 'root' ){
+      throw new QueryError({message:`expected root() property got ${ast.name}`});
+    }
+		let sql = sqlForClass(schema.root, session, ast);
 		let res = db.query(sql)[0];
 		console.debug("RESULT", res);
 		return res;
