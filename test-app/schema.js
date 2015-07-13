@@ -28,8 +28,8 @@ export class member {
 	}}
 
 	// self referencing many-to-many ... this could get real expensive real fast
-	static friends = {type: 'array', of: 'member', query: function(opts){
-		let sql = `
+	static friends = {type: 'array', of: 'member', query: function(){
+		return [`
 			select m2.id, m2.username from member m1
 			left join friend
 				on m1.id = friend.member_1_id
@@ -38,13 +38,7 @@ export class member {
 				on m2.id = friend.member_1_id
 				or m2.id = friend.member_2_id
 			where m1.id = $1 and m2.id != $1
-		`;
-		let args = [this.id];
-		if( opts && opts.id ){
-			sql += ' and m2.id = $2';
-			args.push(opts.id);
-		}
-		return [sql].concat(args);
+		`,this.id];
 	}}
 
 	// contrived example of a computed property

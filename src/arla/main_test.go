@@ -534,6 +534,67 @@ var testCases = []*TC{
 	},
 
 	&TC{
+		Name:   "members().pluck(email_addresses).first(){addr}",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      members().pluck(email_addresses).first(){addr}
+    `,
+		ResBody: `
+			{
+				"members": [{"addr":"alice@alice.com"}]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "members().pluck(email_addresses).pluck(addr).first()",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      members().pluck(email_addresses).pluck(addr).first()
+    `,
+		ResBody: `
+			{
+				"members": ["alice@alice.com"]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "members().pluck(email_addresses).pluck(addr).count()",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      members().pluck(email_addresses).pluck(addr).count()
+    `,
+		ResBody: `
+			{
+				"members": 3
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "can't pluck from an array of simple types",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      members().pluck(email_addresses).pluck(addr).pluck(addr)
+    `,
+		ResCode: http.StatusBadRequest,
+		ResFunc: isError,
+	},
+
+	&TC{
 		Name:   "simple property types should not accept filters",
 		Method: POST,
 		URL:    "/query",
@@ -695,10 +756,10 @@ var testCases = []*TC{
 		Type:   TextPlain,
 		Body: `
       me(){
-				bob: friends({id:"` + bob.ID.String() + `"}).first() {
+				bob: friends.filter(id="` + bob.ID.String() + `").first() {
 					username
 				}
-				kate: friends({id:"` + kate.ID.String() + `"}).first() {
+				kate: friends.filter(id = '` + kate.ID.String() + `').first() {
 					username
 				}
 			}
@@ -720,7 +781,7 @@ var testCases = []*TC{
 		Type:   TextPlain,
 		Body: `
       me(){
-				friends({id: "` + bob.ID.String() + `"}) {
+				friends.filter(id = "` + bob.ID.String() + `") {
 					id
 				}
 			}

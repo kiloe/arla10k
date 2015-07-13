@@ -267,6 +267,7 @@ class QueryError extends Error {
       let plucked = false;
       let halt = false;
       let originalProps = ast.props;
+      let where = '';
       // normalize ast filters
       // eg..
       //     my_property.pluck(x).pluck(y)
@@ -306,6 +307,13 @@ class QueryError extends Error {
             }]
             halt = true;
             return true;
+          case 'where':
+            if( where ){
+              where += ' AND ';
+            }
+            let a = f.a.type == 'ident' ? `$prev.${f.a.value}` : plv8.quote_literal(f.a.value);
+            let b = f.b.type == 'ident' ? `$prev.${f.b.value}` : plv8.quote_literal(f.b.value);
+            where += `where ${a} ${f.op} ${b}`;
           default:
             return true;
         }
@@ -335,7 +343,7 @@ class QueryError extends Error {
           return props;
         },[])
       }
-      withs.unshift(`${sqlForClass(targetKlass, session, ast, i+1)} from $prev`);
+      withs.unshift(`${sqlForClass(targetKlass, session, ast, i+1)} from $prev ${where}`);
       format = isArray ? ARRAY_OF_OBJECTS : OBJECT;
     }
     // Add filter queries
@@ -360,6 +368,8 @@ class QueryError extends Error {
           break;
         case 'sort':
           withs.unshift(`select * from $prev order by $prev.${f.prop.name}`);
+          break;
+        case 'where':
           break;
         default:
           err(`unknown filter ${f.name}`);
@@ -506,7 +516,7 @@ class QueryError extends Error {
           line: err.line,
           column: err.column,
           offset: err.offset,
-          error: err.message,
+          message: err.message,
           context: query
         });
 			}

@@ -44,18 +44,52 @@ ident
 	= $([a-zA-Z_][a-zA-Z0-9_]+)
 
 args "args"
-	= "(" args:arg* ")" { return args }
+	= "(" WS* ")" { return [] }
 
-arg "arg"
-	= json
+op "operator"
+	= $(">=" / "<=" / "==" / "!=" / ">" / "<" / "=")
+
+value "value"
+	= ident_value / bool_value / string_value / number_value
+
+ident_value
+	= v:ident { return {
+		type: 'ident',
+		value: v
+	} }
+
+bool_value
+	= v:bool { return {
+		type: 'bool',
+		value: v
+	} }
+
+string_value
+	= v:string { return {
+		type: 'string',
+		value: v
+	} }
+
+number_value
+	= v:int { return {
+		type: 'number',
+		value: v
+	} }
 
 filter "filter"
-	= "." f:(first / take / slice / unique / count / pluck) { return f }
+	= "." f:(first / take / slice / unique / count / pluck / where) { return f }
+
+where "where"
+	= "filter(" WS* a:value WS* op:op WS* b:value WS* ")" { return {
+		name: "where",
+		a: a,
+		op: op,
+		b: b
+	} }
 
 first "first"
 	= "first()" {return {
 		name: "first",
-		args: []
 	} }
 
 take "take"
@@ -102,227 +136,16 @@ pluck "pluck"
 props "property_list"
 	= WS* "{" WS* props:property* WS* "}" { return props }
 
+bool "boolean"
+	= b:$("true" / "false") { return b == 'true' }
+
 int "integer"
-	= digit+
+	= n:$(digit+) { return parseInt(n,10) }
 
-// -------------- json parsing for args-----------------
-// https://github.com/jceme/RelaxedJsonParser/blob/master/src/PegjsJsonParser.pegjs
+string "string"
+	= ["'] s:$([^"']+) ["'] { return s }
 
-json =
-	WS* val:value WS*
-{
-	return (function(undefined) {
-		return val === NULL_OBJECT ? undefined : val;
-	})();
-}
+digit "digit"
+	= [0-9]
 
-
-object "object" =
-	'{'
-	CWS*
-	p:(
-		sp:pair CWS*
-		{
-			return sp;
-		}
-	)*
-	'}'
-{
-	var result = {}, i, len = p.length, b;
-	for (i=0; i < len; i++) {
-		b = p[i];
-		result[b.id] = b.val;
-	}
-	return result;
-}
-
-
-pair "objectPair" =
-	id:( string / key )
-	WS*
-	':'
-	WS*
-	val:value
-{
-	return { id: flatten(id), val: getValue(val) };
-}
-
-
-key "key" = [a-zA-Z0-9_$]+
-
-
-array "array" =
-	'['
-	CWS*
-	vals:(
-		v:value CWS*
-		{
-			return v;
-		}
-	)*
-	']'
-{
-	return vals.map(function(val) {
-		return getValue(val);
-	});
-}
-
-
-value =
-	object
-	/ array
-	/ string
-	/ boolean
-	/ null
-	/ number
-
-
-boolean "boolean" =
-		'true'i
-		{
-			return true;
-		}
-	/	'false'i
-		{
-			return false;
-		}
-
-null "null" =
-	'null'i
-{
-	return NULL_OBJECT;
-}
-
-
-
-string "string" =
-		(
-			'"'
-			s:(
-				(
-					'\\'
-					e:escseq
-					{
-						return e;
-					}
-				)
-			/	[^\\"]
-			)*
-			'"'
-		)
-		{
-			return flatten(s);
-		}
-	/	(
-			"'"
-			s:(
-				(
-					'\\'
-					e:escseq
-					{
-						return e;
-					}
-				)
-			/	[^\\']
-			)*
-			"'"
-		)
-		{
-			return flatten(s);
-		}
-
-escseq =
-		(
-			k:[bfnrt]
-			{
-				switch (k) {
-					case "b": return "\b";
-					case "f": return "\f";
-					case "n": return "\n";
-					case "r": return "\r";
-					default:  return "\t";
-				}
-			}
-		)
-	/	(
-			'u' hd:(hexdigit hexdigit hexdigit hexdigit)
-			{
-				return String.fromCharCode(parseInt(flatten(hd), 16));
-			}
-		)
-	/	(
-			// Any other escaped char is passed as is
-			j:.
-			{
-				return j;
-			}
-		)
-
-
-number "number" =
-n:(
-	sign?
-	(
-		(
-			'0' [xX] hexdigit+
-		)
-		/ (
-			'0' digit+
-		)
-		/ (
-			(
-				(
-					( '0' / (Digit digit*) )
-					( '.' digit+ )?
-				)
-			/	( '.' digit+ )
-			)
-			exponent?
-		)
-	)
-)
-{
-	var fn = flatten(n);
-
-	if (/^[+-]?0[xX]/.test(fn)) {
-		return parseInt(fn, 16);
-	}
-
-	if (/^[+-]?0[0-7]+$/.test(fn)) {
-		return parseInt(fn, 8);
-	}
-
-	return parseFloat(fn);
-}
-
-sign = [+-]
-
-exponent =
-	[eE]
-	sign?
-	digit+
-
-Digit = [1-9]
-
-digit = [0-9]
-
-hexdigit = [0-9a-fA-F]
-
-
-WS "whitespace" = [ \t\n\r] / COMMENT
-
-CWS "whitespace" = [ \t\n\r,] / COMMENT
-
-COMMENT "comment" = LINE_COMMENT / MULTI_COMMENT
-
-LINE_COMMENT "line comment" =
-	'//'
-	[^\n\r]*
-
-MULTI_COMMENT "multi-line comment" =
-	'/*'
-	(
-		[^*]
-		/ ('*' &[^/])
-	)*
-	'*/'
+WS "whitespace" = [ \t\n\r]
