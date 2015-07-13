@@ -563,6 +563,22 @@ var testCases = []*TC{
 	},
 
 	&TC{
+		Name:   "take() from a plucked list",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      members().pluck(email_addresses.pluck(addr).first()).take(1)
+    `,
+		ResBody: `
+			{
+				"members": ["alice@alice.com"]
+			}
+		`,
+	},
+
+	&TC{
 		Name:   "alice should be able to make friends with bob",
 		Method: POST,
 		URL:    "/exec",

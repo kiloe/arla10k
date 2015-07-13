@@ -36,6 +36,11 @@ class QueryError extends Error {
 	var schema = {};
 	var actions = {};
 
+  const ARRAY_OF_SIMPLE = 1;
+  const ARRAY_OF_OBJECTS = 2;
+  const SIMPLE = 3;
+  const OBJECT = 4;
+
 	function action(name, fn){
 		actions[name] = fn;
 	}
@@ -253,14 +258,12 @@ class QueryError extends Error {
       err(`${klass.name}.${property.name} did not return a valid sql query`);
 		}
     let withs = [sql];
-    let type = property.of || property.type;
-    let isArray = !!property.of;
-    let isJSON = false;
+    let isArray = property.type == 'array';
+    let format = isArray ? ARRAY_OF_SIMPLE : SIMPLE;
     // select the properties for subquery
-		let targetKlass = schema[type];
+		let targetKlass = schema[property.of || property.type];
     if( targetKlass ){
       let _ast = ast;
-      let _targetKlass = targetKlass
       let plucked = false;
       let halt = false;
       let originalProps = ast.props;
@@ -275,23 +278,17 @@ class QueryError extends Error {
         }
         switch(f.name){
           case 'pluck':
+            // push any chained plucks into the next property's filters
             if( plucked ){
               _ast.filters.push(f);
               plucked = f;
               return false;
             }
-            let targetProperty = _targetKlass[f.prop.name];
-            if( !targetProperty ){
-              err(`no property ${f.prop.name} for use with filter ${f.name}`);
-            }
-            // type = targetProperty.of || targetProperty.type;
             if( _ast.props.length > 0 ){
               console.warn(`ignoring redundent ${property.name} selections ${_ast.props.map(p => p.name).join(',')} due to ${f.name}`);
             }
-            f.prop.alias = 'plucked';
             _ast.props = [f.prop];
             _ast = f.prop;
-            _targetKlass = schema[targetProperty.of || targetProperty.type];
             plucked = f;
             return true;
           case 'count':
@@ -339,35 +336,21 @@ class QueryError extends Error {
         },[])
       }
       withs.unshift(`${sqlForClass(targetKlass, session, ast, i+1)} from $prev`);
-    } else {
-      type = 'raw';
+      format = isArray ? ARRAY_OF_OBJECTS : OBJECT;
     }
+    // Add filter queries
     ast.filters.forEach(function(f){
-      if( !isArray ){
-        err(`cannot use filter ${f.name} on non-array result set`);
-      }
       switch(f.name){
         case 'first':
-          if( isJSON ){
-            withs.unshift(`select $prev.o->0 as o from $prev limit 1`);
-          } else {
-            withs.unshift(`select * from $prev limit 1`);
-          }
-          isArray = false;
+          withs.unshift(`select * from $prev limit 1`);
+          format = format == ARRAY_OF_OBJECTS ? OBJECT : SIMPLE;
           break;
         case 'pluck':
-          if( isJSON ){
-            withs.unshift(`select coalesce(json_agg(value->'${f.prop.alias}'),'[]'::json) as o from json_array_elements($prev.o)`)
-          } else {
-            withs.unshift(`select coalesce(json_agg($prev.plucked),'[]'::json) as o from $prev`);
-          }
-          type = 'raw';
-          isJSON = true;
+          format = ARRAY_OF_SIMPLE;
           break;
         case 'count':
           withs.unshift(`select count(*) from $prev`);
-          type = 'raw';
-          isArray = false;
+          format = SIMPLE;
           break;
         case 'take':
           withs.unshift(`select * from $prev limit ${f.n}`);
@@ -382,14 +365,22 @@ class QueryError extends Error {
           err(`unknown filter ${f.name}`);
       }
     })
-    if( type != 'raw' ){
-  		let jsonfn = 'row_to_json';
-      let jsondef = `'{}'`;
-      if( isArray ){
-        jsonfn = 'json_agg';
-        jsondef = `'[]'`;
-      }
-      withs.unshift(`select coalesce(${jsonfn}($prev.*),${jsondef}::json) as o from $prev`)
+    // convert sql to always return a single row with a single json column
+    switch(format){
+      case ARRAY_OF_SIMPLE: // multi row single col
+        withs.unshift(`select coalesce(json_agg(to_json(row($prev.*))->'f1'),'[]'::json) from $prev`)
+        break;
+      case ARRAY_OF_OBJECTS: // multi row multi col
+        withs.unshift(`select coalesce(json_agg($prev.*),'[]'::json) from $prev`)
+        break;
+      case OBJECT: // single row multi col
+        withs.unshift(`select row_to_json($prev.*) from $prev`)
+        break;
+      case SIMPLE: // single row single col
+        withs.unshift(`select to_json(row($prev.*))->'f1' from $prev`)
+        break;
+      default:
+        err(`fatal: unexpected to-json format`);
     }
     let out = withs.reduce(function(w, sql, j){
       let curr = `q_${i}_${j}`;

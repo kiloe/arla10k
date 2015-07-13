@@ -94,7 +94,7 @@ sort "sort"
 	} }
 
 pluck "pluck"
-	= "pluck(" WS* p:property WS* ")" { return {
+	= "pluck(" WS* p:property WS* ")" { p.alias='plucked'; return {
 		name: "pluck",
 		prop: p
 	} }
