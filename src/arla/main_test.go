@@ -10,11 +10,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/evanphx/json-patch"
 	"github.com/mgutz/ansi"
 )
 
@@ -267,6 +267,67 @@ var testCases = []*TC{
 	},
 
 	&TC{
+		Name:   "query members().take(1)",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+      members().take(1) {
+        username
+      }
+    `,
+		ResBody: `
+			{
+				"members": [
+					{"username":"alice"}
+				]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "query members().slice(0,2)",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+      members().slice(0,2) {
+        username
+      }
+    `,
+		ResBody: `
+			{
+				"members": [
+					{"username":"alice"},
+					{"username":"bob"}
+				]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "query members().slice(2,1)",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+      members().slice(2,1) {
+        username
+      }
+    `,
+		ResBody: `
+			{
+				"members": [
+					{"username":"kate"}
+				]
+			}
+		`,
+	},
+
+	&TC{
 		Name:   "query members() on root with email addrs",
 		Method: POST,
 		URL:    "/query",
@@ -362,15 +423,31 @@ var testCases = []*TC{
 	},
 
 	&TC{
-		Name:   "pluck just the addrs from each member",
+		Name:   "members().pluck(username)",
 		Method: POST,
 		URL:    "/query",
 		User:   alice,
 		Type:   ApplicationJSON,
 		Body: `
+      members().pluck(username)
+    `,
+		ResBody: `
+			{
+				"members": ["alice","bob","kate"]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "pluck just the addrs from each member",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
       members() {
         username
-				email_addresses().pluck('addr')
+				email_addresses().pluck(addr)
       }
     `,
 		ResBody: `
@@ -380,6 +457,107 @@ var testCases = []*TC{
 					{"username":"bob", "email_addresses":["bob@gmail.com"]},
 					{"username":"kate","email_addresses":[]}
 				]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "members().pluck(email_addresses{addr})",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+      members().pluck(email_addresses{addr})
+    `,
+		ResBody: `
+			{
+				"members": [
+					[{"addr":"alice@alice.com"}],
+					[{"addr":"bob@gmail.com"}],
+					[]
+				]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "members().pluck(email_addresses){addr}",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      members().pluck(email_addresses){addr}
+    `,
+		ResBody: `
+			{
+				"members": [
+					[{"addr":"alice@alice.com"}],
+					[{"addr":"bob@gmail.com"}],
+					[]
+				]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "members().pluck(email_addresses.pluck(addr))",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+      members().pluck(email_addresses.pluck(addr))
+    `,
+		ResBody: `
+			{
+				"members": [["alice@alice.com"],["bob@gmail.com"],[]]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "members().pluck(email_addresses).pluck(addr)",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      members().pluck(email_addresses).pluck(addr)
+    `,
+		ResBody: `
+			{
+				"members": [["alice@alice.com"],["bob@gmail.com"],[]]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "simple property types should not accept filters",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      members().pluck(email_addresses).pluck(addr.first())
+    `,
+		ResCode: http.StatusBadRequest,
+		ResFunc: isError,
+	},
+
+	&TC{
+		Name:   "members().pluck(email_addresses.pluck(addr).first())",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      members().pluck(email_addresses.pluck(addr).first())
+    `,
+		ResBody: `
+			{
+				"members": ["alice@alice.com","bob@gmail.com", null]
 			}
 		`,
 	},
@@ -652,13 +830,23 @@ var server *Server
 
 // compare json bytes a to b
 func cmpjson(a, b []byte) bool {
-	return jsonpatch.Equal(a, b) && jsonpatch.Equal(b, a)
+	ma := make(map[string]interface{})
+	mb := make(map[string]interface{})
+	if err := json.Unmarshal(a, &ma); err != nil {
+		log.Fatal("FAILED TO UNMARSHAL", a)
+		return false
+	}
+	if err := json.Unmarshal(b, &mb); err != nil {
+		log.Fatal("FAILED TO UNMARSHAL", b)
+		return false
+	}
+	return reflect.DeepEqual(ma, mb)
 }
 
 // Test converts a test case into a Request to execute against
 // the running server then evaluates that the response is what was
 // to be expected.
-func (tc *TC) Test() error {
+func (tc *TC) Test() (e error) {
 	buf := &bytes.Buffer{}
 	fmt.Fprintln(buf)
 	fmt.Fprintln(buf, "+------------------------------------------")
@@ -671,6 +859,12 @@ func (tc *TC) Test() error {
 		fmt.Fprint(buf, "\n", ansi.Reset)
 		return errors.New(buf.String())
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			e = fail("panic: %v", r)
+			panic(r)
+		}
+	}()
 	if tc.Type == "" {
 		tc.Type = ApplicationJSON
 	}
@@ -767,7 +961,7 @@ func (tc *TC) Test() error {
 				return fail("expected text response to be:\n%v", tc.ResBody)
 			}
 		default:
-			panic("don't know how to deal with " + tc.ResType + " responses")
+			return fail("don't know how to deal with %v", tc.ResType)
 		}
 	}
 	return nil
@@ -775,15 +969,17 @@ func (tc *TC) Test() error {
 
 func TestCases(t *testing.T) {
 	for _, tc := range testCases {
+		fmt.Println("running:", tc.Name, "...")
 		if err := tc.Test(); err != nil {
 			t.Fatal(err)
 		}
+		fmt.Println("completed:", tc.Name, ansi.Green, "OK", ansi.Reset)
 	}
 	// dump successes to screen - makes it less weird since some of the "errors"
 	// are actually part of the tests and it can look confusing
 	fmt.Print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
 	for _, tc := range testCases {
-		fmt.Println(tc.Name, ansi.Green, "OK", ansi.Reset)
+		fmt.Println(ansi.Green, "PASS", ansi.Reset, tc.Name)
 	}
 }
 

@@ -18,6 +18,8 @@ class UserError extends Error {
 class QueryError extends Error {
   constructor(o) {
     var err = super(o.message);
+    o.error = o.message;
+    delete o.message;
     Object.assign(this, {
       name: "QueryError",
       message: JSON.stringify(o),
@@ -182,6 +184,23 @@ class QueryError extends Error {
 	var PARENT_MATCH = /\$this/g;
 
 	function sqlForProperty(klass, session, ast, i=0){
+    // fetch requested property
+		let property = klass[ast.name];
+		if( !property ){
+      throw new QueryError({
+        message: `no such property`,
+        property: ast.name,
+        kind: klass.name,
+      })
+		}
+		if( !property.type ){
+      throw new QueryError({
+        message: `property has no type defined`,
+        property: ast.name,
+        kind: klass.name,
+      })
+		}
+    // shorthand for errors
     let err = function(msg){
       throw new QueryError({
         message: msg,
@@ -190,16 +209,14 @@ class QueryError extends Error {
         kind: klass.name,
       })
     }
-    let alias = ast.alias || ast.name;
-		let property = klass[ast.name];
-		if( !property ){
-			throw new UserError(`${klass.name} has no property ${ast.name}`)
-		}
-		if( !property.type ){
-			throw new UserError(`${klass.name} does not have a valid property ${ast.name}`)
-		}
 		// simple property fetch
 		if( !property.query ){
+      if( ast.args.length > 0 ){
+        err(`property type does not accept arguments`);
+      }
+      if( ast.filters.length > 0 ){
+        err(`property type does not accept filters`);
+      }
 			return `$prev.${property.name}`;
 		}
 		// build context that can be used to reference parent table
@@ -236,86 +253,143 @@ class QueryError extends Error {
       err(`${klass.name}.${property.name} did not return a valid sql query`);
 		}
     let withs = [sql];
-    let type = property.type;
-    // if type is a schema-type then build the subquery
-		let targetKlass = schema[property.of || property.type];
+    let type = property.of || property.type;
+    let isArray = !!property.of;
+    let isJSON = false;
+    // select the properties for subquery
+		let targetKlass = schema[type];
     if( targetKlass ){
-      ast.filters.forEach(function(f){
-        let aggProp = 'id';
+      let _ast = ast;
+      let _targetKlass = targetKlass
+      let plucked = false;
+      let halt = false;
+      let originalProps = ast.props;
+      // normalize ast filters
+      // eg..
+      //     my_property.pluck(x).pluck(y)
+      // becomes...
+      //     my_property.pluck(x.pluck(y))
+      ast.filters = ast.filters.filter(function(f){
+        if( halt ){
+          err(`cannot use filter ${f.name} here`);
+        }
         switch(f.name){
           case 'pluck':
-            aggProp = f.args[0];
+            if( plucked ){
+              _ast.filters.push(f);
+              plucked = f;
+              return false;
+            }
+            let targetProperty = _targetKlass[f.prop.name];
+            if( !targetProperty ){
+              err(`no property ${f.prop.name} for use with filter ${f.name}`);
+            }
+            // type = targetProperty.of || targetProperty.type;
+            if( _ast.props.length > 0 ){
+              console.warn(`ignoring redundent ${property.name} selections ${_ast.props.map(p => p.name).join(',')} due to ${f.name}`);
+            }
+            f.prop.alias = 'plucked';
+            _ast.props = [f.prop];
+            _ast = f.prop;
+            _targetKlass = schema[targetProperty.of || targetProperty.type];
+            plucked = f;
+            return true;
           case 'count':
-            if( typeof aggProp != 'string' ){
-              err(`filter ${f.name} expects a string argument`);
+            if( plucked ){
+              console.warn(`ignoring redundent pluck filter on ${property.name} due to count`);
             }
-            if( ast.props.length > 0 ){
-              err(`cannot request properties when using ${f.name}`);
+            if( _ast.props.length > 0 ){
+              console.warn(`ignoring redundent ${property.name} selections ${_ast.props.map(p => p.name).join(',')} due to ${f.name}`);
             }
-            if( !targetKlass[aggProp] || targetKlass[aggProp].query ){
-              err(`no property ${propName} for use with filter ${f.name}`);
-            }
-            ast.props.push({
-              name: aggProp,
+            ast.props = [{
+              name: 'id',
               args: [],
               props: [],
               filters: [],
-            })
-            break;
+            }]
+            halt = true;
+            return true;
+          default:
+            return true;
         }
       });
+      // normalize property selection for plucks
+      // eg..
+      //     my_property.pluck(x){id}
+      // becomes...
+      //     my_property.pluck(x{id})
+      if( plucked && originalProps.length > 0 ){
+        plucked.prop.props = originalProps;
+      }
+      // If no properties explictly chosen assume ALL
+      if( ast.props.length === 0 ){
+        err(`expected at least one property selection`);
+        ast.props = Object.keys(targetKlass).reduce(function(props, k){
+          let p = targetKlass[k];
+          if( !p.type ){
+            return props;
+          }
+          props.push({
+            name: k,
+            args: [],
+            props: [],
+            filters: []
+          })
+          return props;
+        },[])
+      }
       withs.unshift(`${sqlForClass(targetKlass, session, ast, i+1)} from $prev`);
     } else {
       type = 'raw';
     }
     ast.filters.forEach(function(f){
+      if( !isArray ){
+        err(`cannot use filter ${f.name} on non-array result set`);
+      }
       switch(f.name){
         case 'first':
-          if( type != 'array' ){
-            err(`cannot use filter ${f.name} on non-array result set`);
+          if( isJSON ){
+            withs.unshift(`select $prev.o->0 as o from $prev limit 1`);
+          } else {
+            withs.unshift(`select * from $prev limit 1`);
           }
-          if( f.args.length != 0 ){
-            err(`filter ${f.name} does not expect any arguments`);
-          }
-          withs.unshift(`select * from $prev limit 1`);
-          type = property.of;
+          isArray = false;
           break;
         case 'pluck':
-          if( type != 'array' ){
-            err(`cannot use filter ${f.name} on non-array result set`);
+          if( isJSON ){
+            withs.unshift(`select coalesce(json_agg(value->'${f.prop.alias}'),'[]'::json) as o from json_array_elements($prev.o)`)
+          } else {
+            withs.unshift(`select coalesce(json_agg($prev.plucked),'[]'::json) as o from $prev`);
           }
-          if( f.args.length != 1 ){
-            err(`filter ${f.name} expects exactly one argument`);
-          }
-          if( typeof f.args[0] != 'string' ){
-            err(`filter ${f.name} expects a string argument`);
-          }
-          let col = f.args[0].replace(/[^a-z0-9_]+/ig, '');
-          withs.unshift(`select coalesce(json_agg($prev.${col}),'[]'::json) from $prev`);
           type = 'raw';
+          isJSON = true;
           break;
         case 'count':
-          if( type != 'array' ){
-            err(`cannot use filter ${f.name} on non-array result set`);
-          }
-          if( f.args.length != 0 ){
-            err(`filter ${f.name} does not expect any arguments`);
-          }
           withs.unshift(`select count(*) from $prev`);
           type = 'raw';
+          isArray = false;
+          break;
+        case 'take':
+          withs.unshift(`select * from $prev limit ${f.n}`);
+          break;
+        case 'slice':
+          withs.unshift(`select * from $prev offset ${f.start} limit ${f.end}`);
+          break;
+        case 'sort':
+          withs.unshift(`select * from $prev order by $prev.${f.prop.name}`);
           break;
         default:
           err(`unknown filter ${f.name}`);
       }
     })
-    if( type != 'raw'){
+    if( type != 'raw' ){
   		let jsonfn = 'row_to_json';
       let jsondef = `'{}'`;
-      if( type == 'array' ){
+      if( isArray ){
         jsonfn = 'json_agg';
         jsondef = `'[]'`;
       }
-      withs.unshift(`select coalesce(${jsonfn}($prev.*),${jsondef}::json) from $prev`)
+      withs.unshift(`select coalesce(${jsonfn}($prev.*),${jsondef}::json) as o from $prev`)
     }
     let out = withs.reduce(function(w, sql, j){
       let curr = `q_${i}_${j}`;
@@ -323,22 +397,24 @@ class QueryError extends Error {
       if( j < withs.length-1 ){ // ignore last (user sql)
         sql = sql.split('$prev').join(prev)
       }
+      let ws = '\n' + Array(4*i).join(' ');
       if( j > 0 ){
         let comma = j > 1 ? ',' : '';
-        return `\n${curr} as (${sql}) ${comma}` + w;
+        return `${ws}${curr} as (${sql}) ${comma}` + w;
       }
-      return `\n${sql}` + w;
+      return `${ws}${sql}` + w;
     },'');
     if( withs.length > 1 ){
-      return `(with ${out}\n) as ${alias}`
+      return `(with ${out})`
     }else{
-      return `(${out}) as ${alias}`;
+      return `(${out})`;
     }
 	}
 
 	function sqlForClass(klass, session, ast, i = 0){
+    console.info('sqlForClass', klass.name, ast);
 		return "select " + ast.props.map(function(p){
-			return sqlForProperty(klass, session, p, i)
+			return sqlForProperty(klass, session, p, i) + ` as ${p.alias}`;
 		}).join(',');
 	}
 

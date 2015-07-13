@@ -27,7 +27,7 @@ start
 
 property "property"
 	= WS* alias:alias? WS* name:name args:args? filters:filter* props:props? { return {
-		alias:alias,
+		alias:alias || name,
 		name:name,
 		args:args || [],
 		filters:filters || [],
@@ -50,13 +50,60 @@ arg "arg"
 	= json
 
 filter "filter"
-	= "." name:name args:args? { return {
-		name: name,
-		args: args
+	= "." f:(first / take / slice / unique / count / pluck) { return f }
+
+first "first"
+	= "first()" {return {
+		name: "first",
+		args: []
+	} }
+
+take "take"
+	= "take(" WS* n:int WS* ")" { return {
+		name: "take",
+		n: n
+	} }
+
+slice "slice"
+	= "slice(" WS* start:int WS* "," WS* end:int WS* ")" { return {
+		name: "slice",
+		start: start,
+		end: end
+	} }
+
+unique "uniq"
+	= "unique()" { return {
+		name: "unique"
+	} }
+
+count "count"
+	= "count()" { return {
+		name: "count"
+	} }
+
+countBy "countBy"
+	= "countBy(" WS* p:property WS* ")" { return {
+		name: "countBy",
+		prop: p
+	} }
+
+sort "sort"
+	= "sort(" WS* p:property WS* ")" { return {
+		name: "sort",
+		prop: p
+	} }
+
+pluck "pluck"
+	= "pluck(" WS* p:property WS* ")" { return {
+		name: "pluck",
+		prop: p
 	} }
 
 props "property_list"
 	= WS* "{" WS* props:property* WS* "}" { return props }
+
+int "integer"
+	= digit+
 
 // -------------- json parsing for args-----------------
 // https://github.com/jceme/RelaxedJsonParser/blob/master/src/PegjsJsonParser.pegjs
