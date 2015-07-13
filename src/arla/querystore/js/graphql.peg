@@ -77,7 +77,7 @@ number_value
 	} }
 
 filter "filter"
-	= "." f:(first / take / slice / unique / count / pluck / where) { return f }
+	= "." f:(first / take / slice / unique / count / pluck / where / sortBy / sort) { return f }
 
 where "where"
 	= "filter(" WS* a:value WS* op:op WS* b:value WS* ")" { return {
@@ -116,15 +116,24 @@ count "count"
 	} }
 
 countBy "countBy"
-	= "countBy(" WS* p:property WS* ")" { return {
+	= "countBy(" WS* s:ident WS* ")" { return {
 		name: "countBy",
-		prop: p
+		ident: s
 	} }
 
+sortBy "sortBy"
+	= "sort(" WS* s:ident WS* dir:sortDir? WS* ")" { return {
+		name: "sortBy",
+		ident: s,
+		dir: dir || 'asc'
+	} }
+
+sortDir "sortDir"
+	= $("desc" / "asc")
+
 sort "sort"
-	= "sort(" WS* p:property WS* ")" { return {
-		name: "sort",
-		prop: p
+	= "sort()" { return {
+		name: "sort"
 	} }
 
 pluck "pluck"

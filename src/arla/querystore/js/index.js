@@ -268,6 +268,7 @@ class QueryError extends Error {
       let halt = false;
       let originalProps = ast.props;
       let where = '';
+      let order = '';
       // normalize ast filters
       // eg..
       //     my_property.pluck(x).pluck(y)
@@ -314,6 +315,19 @@ class QueryError extends Error {
             let a = f.a.type == 'ident' ? `$prev.${f.a.value}` : plv8.quote_literal(f.a.value);
             let b = f.b.type == 'ident' ? `$prev.${f.b.value}` : plv8.quote_literal(f.b.value);
             where += `where ${a} ${f.op} ${b}`;
+            return false;
+          case 'sortBy':
+            if( order ){
+              err('multiple sort operations used');
+            }
+            order = `order by $prev.${f.ident} ${f.dir}`;
+            return false;
+          case 'sort':
+            if( order ){
+              err('multiple sort operations used');
+            }
+            order = 'order by $prev';
+            return false;
           default:
             return true;
         }
@@ -343,7 +357,7 @@ class QueryError extends Error {
           return props;
         },[])
       }
-      withs.unshift(`${sqlForClass(targetKlass, session, ast, i+1)} from $prev ${where}`);
+      withs.unshift(`${sqlForClass(targetKlass, session, ast, i+1)} from $prev ${where} ${order}`);
       format = isArray ? ARRAY_OF_OBJECTS : OBJECT;
     }
     // Add filter queries
@@ -367,12 +381,10 @@ class QueryError extends Error {
           withs.unshift(`select * from $prev offset ${f.start} limit ${f.end}`);
           break;
         case 'sort':
-          withs.unshift(`select * from $prev order by $prev.${f.prop.name}`);
-          break;
-        case 'where':
+          withs.unshift(`select * from $prev order by $prev`);
           break;
         default:
-          err(`unknown filter ${f.name}`);
+          err(`unknown filter or cannot use filter here: '${f.name}'`);
       }
     })
     // convert sql to always return a single row with a single json column
@@ -413,7 +425,6 @@ class QueryError extends Error {
 	}
 
 	function sqlForClass(klass, session, ast, i = 0){
-    console.info('sqlForClass', klass.name, ast);
 		return "select " + ast.props.map(function(p){
 			return sqlForProperty(klass, session, p, i) + ` as ${p.alias}`;
 		}).join(',');

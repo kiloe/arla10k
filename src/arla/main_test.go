@@ -556,11 +556,11 @@ var testCases = []*TC{
 		User:   alice,
 		Type:   TextPlain,
 		Body: `
-      members().pluck(email_addresses).pluck(addr).first()
+      first_email: members().pluck(email_addresses).pluck(addr).first()
     `,
 		ResBody: `
 			{
-				"members": ["alice@alice.com"]
+				"first_email": ["alice@alice.com"]
 			}
 		`,
 	},
@@ -792,6 +792,68 @@ var testCases = []*TC{
 					"friends": [{"id":"` + bob.ID.String() + `"}]
 				}
 			}`,
+	},
+
+	&TC{
+		Name:   "fetch a simple list of numbers",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      numbers
+    `,
+		ResBody: `
+			{
+				"numbers":[10,5,11]
+			}`,
+	},
+
+	&TC{
+		Name:   "fetch and sort a simple list of numbers",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   TextPlain,
+		Body: `
+      numbers.sort()
+    `,
+		ResBody: `
+			{
+				"numbers":[5,10,11]
+			}`,
+	},
+
+	&TC{
+		Name:   "members().sort(username desc).pluck(username)",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+      members().sort(username desc).pluck(username)
+    `,
+		ResBody: `
+			{
+				"members": ["kate","bob","alice"]
+			}
+		`,
+	},
+
+	&TC{
+		Name:   "members().sort(username asc).pluck(username)",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+      members().sort(username asc).pluck(username)
+    `,
+		ResBody: `
+			{
+				"members": ["alice","bob","kate"]
+			}
+		`,
 	},
 
 	&TC{

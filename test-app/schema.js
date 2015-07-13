@@ -13,6 +13,10 @@ export class root {
 		return `select * from email`;
 	}}
 
+	static numbers = {type:'array', of:'int', query: function(){
+		return `select * from unnest(ARRAY[10,5,11])`
+	}}
+
 }
 
 export class member {
