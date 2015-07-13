@@ -857,6 +857,22 @@ var testCases = []*TC{
 	},
 
 	&TC{
+		Name:   "members().pluck(username).sort(desc)",
+		Method: POST,
+		URL:    "/query",
+		User:   alice,
+		Type:   ApplicationJSON,
+		Body: `
+      members().pluck(username).sort(desc)
+    `,
+		ResBody: `
+			{
+				"members": ["kate","bob","alice"]
+			}
+		`,
+	},
+
+	&TC{
 		Name:   "alice should see bob as a friend who should see alice as a friend ad infinitum",
 		Method: POST,
 		URL:    "/query",

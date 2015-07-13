@@ -77,7 +77,7 @@ number_value
 	} }
 
 filter "filter"
-	= "." f:(first / take / slice / unique / count / pluck / where / sortBy / sort) { return f }
+	= "." f:(first / take / slice / unique / count / pluck / where / sort / sortBy) { return f }
 
 where "where"
 	= "filter(" WS* a:value WS* op:op WS* b:value WS* ")" { return {
@@ -132,8 +132,9 @@ sortDir "sortDir"
 	= $("desc" / "asc")
 
 sort "sort"
-	= "sort()" { return {
-		name: "sort"
+	= "sort(" dir:sortDir? ")" { return {
+		name: "sort",
+		dir: dir || 'asc'
 	} }
 
 pluck "pluck"

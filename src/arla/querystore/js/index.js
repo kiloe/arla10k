@@ -326,7 +326,7 @@ class QueryError extends Error {
             if( order ){
               err('multiple sort operations used');
             }
-            order = 'order by $prev';
+            order = `order by $prev ${f.dir}`;
             return false;
           default:
             return true;
@@ -334,9 +334,9 @@ class QueryError extends Error {
       });
       // normalize property selection for plucks
       // eg..
-      //     my_property.pluck(x){id}
+      //     my_property.pluck(x).pluck(y){id}
       // becomes...
-      //     my_property.pluck(x{id})
+      //     my_property.pluck(x).pluck(y{id})
       if( plucked && originalProps.length > 0 ){
         plucked.prop.props = originalProps;
       }
@@ -381,7 +381,10 @@ class QueryError extends Error {
           withs.unshift(`select * from $prev offset ${f.start} limit ${f.end}`);
           break;
         case 'sort':
-          withs.unshift(`select * from $prev order by $prev`);
+          withs.unshift(`select * from $prev order by $prev ${f.dir}`);
+          break;
+        case 'sortBy':
+          withs.unshift(`select * from $prev order by $prev.${f.ident} ${f.dir}`);
           break;
         default:
           err(`unknown filter or cannot use filter here: '${f.name}'`);
