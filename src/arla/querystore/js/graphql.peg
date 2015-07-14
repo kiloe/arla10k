@@ -50,7 +50,7 @@ op "operator"
 	= $(">=" / "<=" / "==" / "!=" / ">" / "<" / "=")
 
 value "value"
-	= ident_value / bool_value / string_value / number_value
+	= ident_value / bool_value / string_value / number_value / placeholder_value
 
 ident_value
 	= v:ident { return {
@@ -74,6 +74,12 @@ number_value
 	= v:int { return {
 		type: 'number',
 		value: v
+	} }
+
+placeholder_value
+	= "$" v:$([1-9][0-9]*) { return {
+		type: 'placeholder',
+		value: parseInt(v, 10)
 	} }
 
 filter "filter"

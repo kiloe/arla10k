@@ -12,7 +12,7 @@ type Engine interface {
 	Stop() error
 	Wait() error
 	Mutate(*schema.Mutation) error
-	Query(t schema.Token, q string, w io.Writer) error
+	Query(*schema.Query, io.Writer) error
 	NewWriter() (w io.WriteCloser, err error)
 	SetLogLevel(logLevel)
 	GetLogLevel() logLevel

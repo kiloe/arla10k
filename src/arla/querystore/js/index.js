@@ -188,7 +188,21 @@ class QueryError extends Error {
 
 	var PARENT_MATCH = /\$this/g;
 
-	function sqlForProperty(klass, session, ast, i=0){
+  function userValue(v, args) {
+    if(v.type == 'ident'){
+      return `$prev.${v.value}`
+    }
+    if(v.type == 'placeholder'){
+      if( v.value > args.length ){
+        throw new QueryError({message: `missing argument for placeholder $${v.value}`});
+      }
+      console.info('$'+v.value, args[v.value-1], args);
+      return plv8.quote_literal(args[v.value - 1]);
+    }
+    return plv8.quote_literal(v.value);
+  }
+
+	function sqlForProperty(klass, session, ast, vars=[], i=0){
     // fetch requested property
 		let property = klass[ast.name];
 		if( !property ){
@@ -312,8 +326,8 @@ class QueryError extends Error {
             if( where ){
               where += ' AND ';
             }
-            let a = f.a.type == 'ident' ? `$prev.${f.a.value}` : plv8.quote_literal(f.a.value);
-            let b = f.b.type == 'ident' ? `$prev.${f.b.value}` : plv8.quote_literal(f.b.value);
+            let a = userValue(f.a, vars);
+            let b = userValue(f.b, vars);
             where += `where ${a} ${f.op} ${b}`;
             return false;
           case 'sortBy':
@@ -357,7 +371,7 @@ class QueryError extends Error {
           return props;
         },[])
       }
-      withs.unshift(`${sqlForClass(targetKlass, session, ast, i+1)} from $prev ${where} ${order}`);
+      withs.unshift(`${sqlForClass(targetKlass, session, ast, vars, i+1)} from $prev ${where} ${order}`);
       format = isArray ? ARRAY_OF_OBJECTS : OBJECT;
     }
     // Add filter queries
@@ -427,9 +441,9 @@ class QueryError extends Error {
     }
 	}
 
-	function sqlForClass(klass, session, ast, i = 0){
+	function sqlForClass(klass, session, ast, vars=[], i=0){
 		return "select " + ast.props.map(function(p){
-			return sqlForProperty(klass, session, p, i) + ` as ${p.alias}`;
+			return sqlForProperty(klass, session, p, vars, i) + ` as ${p.alias}`;
 		}).join(',');
 	}
 
@@ -466,11 +480,11 @@ class QueryError extends Error {
 	};
 
 	arla.replay = function(m){
-		arla.exec(m.Name, m.Token, m.Args);
+		arla.exec(m);
 		return true;
 	};
 
-	arla.exec = function(name, session, args){
+	arla.exec = function({name, args, token}){
 		var fn = actions[name];
 		if( !fn ){
 			if( /^[a-zA-Z0-9_]+$/.test(name) ){
@@ -480,8 +494,8 @@ class QueryError extends Error {
 			}
 		}
 		// exec the mutation func
-		console.debug(`action ${name} args:`, args, "session:", session);
-		var queryArgs = fn.apply({session:session}, args);
+		console.debug(`action ${name} args:`, args, "session:", token);
+		var queryArgs = fn.apply({session:token}, args);
 		if( !queryArgs ){
 			console.debug(`action ${name} was a noop`);
 			return [];
@@ -510,12 +524,12 @@ class QueryError extends Error {
 		}
 	};
 
-	arla.query = function(session, query){
+	arla.query = function({query, args, token}){
 		if( !query ){
 			throw new QueryError({error:'arla_query: query text cannot be null'});
 		}
 		query = `root(){ ${query} }`;
-		console.debug("QUERY:", query);
+		console.debug("AQL:", query, args);
 		let ast;
 		try{
 			ast = gql.parse(query);
@@ -540,7 +554,7 @@ class QueryError extends Error {
     if( ast.name != 'root' ){
       throw new QueryError({message:`expected root() property got ${ast.name}`});
     }
-		let sql = sqlForClass(schema.root, session, ast);
+		let sql = sqlForClass(schema.root, token, ast, args);
 		let res = db.query(sql)[0];
 		console.debug("RESULT", res);
 		return res;

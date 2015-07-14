@@ -108,26 +108,22 @@ func (p *postgres) Stop() (err error) {
 func (p *postgres) Mutate(m *schema.Mutation) error {
 	p.execMu.Lock()
 	defer p.execMu.Unlock()
-	args, err := json.Marshal(m.Args)
+	b, err := json.Marshal(m)
 	if err != nil {
 		return err
 	}
-	token, err := json.Marshal(m.Token)
-	if err != nil {
-		return err
-	}
-	_, err = p.execConn.Exec("select arla_exec($1::text, $2::json, $3::json)", m.Name, string(token), string(args))
+	_, err = p.execConn.Exec("select arla_exec($1::json)", string(b))
 	return err
 }
 
 // Query executes an Arla query and writes the JSON response into w
-func (p *postgres) Query(t schema.Token, query string, w io.Writer) error {
+func (p *postgres) Query(q *schema.Query, w io.Writer) error {
 	out := jsonbytes{w: w}
-	b, err := json.Marshal(t)
+	b, err := json.Marshal(q)
 	if err != nil {
 		return err
 	}
-	r := p.queryPool.QueryRow("select arla_query($1::json, $2::text)", string(b), query)
+	r := p.queryPool.QueryRow("select arla_query($1::json)", string(b))
 	if err := r.Scan(&out); err != nil {
 		return err
 	}

@@ -150,7 +150,7 @@ CREATE OR REPLACE FUNCTION public.plv8_init() RETURNS json AS $javascript$
 			for (var i = 1; i < arguments.length; i++) {
 				args.push(arguments[i]);
 			}
-			console.debug("QUERY", sql, args);
+			console.debug("SQL", sql, args);
 			return plv8.execute(sql, args);
 		}
 		db.transaction = plv8.subtransaction;

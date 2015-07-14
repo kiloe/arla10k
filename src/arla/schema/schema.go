@@ -19,6 +19,7 @@ type Mutation struct {
 
 // Query is the request format for AQL queries with arguments
 type Query struct {
+	Token Token         `json:"token,omitempty"`
 	Query string        `json:"query,omitempty"`
 	Args  []interface{} `json:"args,omitempty"`
 }

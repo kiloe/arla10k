@@ -338,28 +338,29 @@ func TestAPI(t *testing.T) {
 	alice.Query(`
 		me(){
 			friends.filter(id = "` + bob.ID.String() + `") {
-				id
+				username
 			}
 		}
 	`).ShouldReturn(`
 		{
 			"me":{
-				"friends": [{"id":"` + bob.ID.String() + `"}]
+				"friends": [{"username":"bob"}]
 			}
 		}
 	`)
 
 	// aliases should allow same properties to be reused
+	// placeholders can be used for arguments
 	alice.Query(`
 		me(){
-			bob: friends.filter(id="` + bob.ID.String() + `").first() {
+			bob: friends.filter(id = $1).first() {
 				username
 			}
-			kate: friends.filter(id = '` + kate.ID.String() + `').first() {
+			kate: friends.filter(id = $2).first() {
 				username
 			}
 		}
-	`).ShouldReturn(`
+	`, bob.ID.String(), kate.ID.String()).ShouldReturn(`
 		{
 			"me":{
 				"bob": {"username":"bob"},

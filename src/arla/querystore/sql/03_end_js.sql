@@ -15,8 +15,8 @@ $$ LANGUAGE "plv8";
 
 
 -- execute a mutation
-CREATE OR REPLACE FUNCTION arla_exec(name text, t json, args json) RETURNS json AS $$
-	return JSON.stringify(plv8.arla.exec(name, t, args, false));
+CREATE OR REPLACE FUNCTION arla_exec(mutation json) RETURNS json AS $$
+	return JSON.stringify(plv8.arla.exec(mutation));
 $$ LANGUAGE "plv8";
 
 -- execute a mutation using a json representation of the mutation
@@ -25,8 +25,8 @@ CREATE OR REPLACE FUNCTION arla_replay(mutation json) RETURNS boolean AS $$
 $$ LANGUAGE "plv8";
 
 -- use graphql to execute a query
-CREATE OR REPLACE FUNCTION arla_query(t json, q text) RETURNS json AS $$
-	return JSON.stringify(plv8.arla.query(t, q));
+CREATE OR REPLACE FUNCTION arla_query(query json) RETURNS json AS $$
+	return JSON.stringify(plv8.arla.query(query));
 $$ LANGUAGE "plv8";
 
 -- run the authentication func
