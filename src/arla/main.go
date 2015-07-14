@@ -228,11 +228,12 @@ func (s *Server) execHandler(w http.ResponseWriter, r *http.Request, t schema.To
 // queryHandler accepts a GraphQL-like query in the request body and executes
 // it against the data in the query engine. The response is JSON.
 func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request, t schema.Token) *Error {
-	b, err := ioutil.ReadAll(r.Body)
-	if err != nil {
+	q := &schema.Query{}
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&q); err != nil {
 		return userError(err)
 	}
-	if err := s.qs.Query(t, string(b), w); err != nil {
+	if err := s.qs.Query(t, q.Query, w); err != nil {
 		return userError(err)
 	}
 	return nil

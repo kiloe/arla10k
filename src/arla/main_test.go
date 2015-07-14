@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -38,16 +39,11 @@ type TC struct {
 	User *user
 	// Body is the request body
 	Body string
-	// Type is the content-type of request
-	Type string
-	// ResBody is an optional string representation of the expected response
-	ResBody string
-	// ResType is the expected response content-type
-	ResType string
-	// ResCode is the expected response code
-	ResCode int
-	// ResFunc will be called to verifiy the response if present
-	ResFunc func(b []byte) error
+	// Query is shorthand for setting a Query test case
+	Query     string
+	QueryArgs []interface{}
+	// Check will be called to verifiy the response if present
+	Check Check
 }
 
 type user struct {
@@ -64,12 +60,6 @@ func (u *user) JSON() string {
 	}
 	return string(b)
 }
-
-var (
-	mutations = `
-    {"ID":"", "Name":"exampleOp", "Args":[]}
-  `
-)
 
 var (
 	alice = &user{
@@ -89,127 +79,140 @@ var (
 	}
 )
 
-func hasKey(k string) func(b []byte) error {
-	return func(b []byte) error {
-		v := make(map[string]interface{})
-		if err := json.Unmarshal(b, &v); err != nil {
-			return err
+type Check func(b []byte, res *http.Response) error
+
+func hasKey(k string, b []byte) error {
+	v := make(map[string]interface{})
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	if t, ok := v[k]; !ok || t == nil {
+		return fmt.Errorf("expected response to have key '%s' but got %v", k, string(b))
+	}
+	return nil
+}
+
+func isError() Check {
+	return func(b []byte, res *http.Response) error {
+		if res.StatusCode != http.StatusBadRequest {
+			return fmt.Errorf("expected status code %d", http.StatusBadRequest)
 		}
-		if t, ok := v[k]; !ok || t == nil {
-			return fmt.Errorf("expected response to have key '%s' but got %v", k, string(b))
-		}
-		return nil
+		return hasKey("error", b)
 	}
 }
 
-var isError = hasKey("error")
-var isOK = hasKey("success")
+func isOK() Check {
+	return func(b []byte, res *http.Response) error {
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("expected status code %d", http.StatusOK)
+		}
+		return hasKey("success", b)
+	}
+}
+
+func isAuthenticated() Check {
+	return func(b []byte, res *http.Response) error {
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("expected status code %d", http.StatusOK)
+		}
+		return hasKey("access_token", b)
+	}
+}
+
+func isJSON(a string) Check {
+	return func(b []byte, res *http.Response) error {
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("expected status code %d", http.StatusOK)
+		}
+		ma := make(map[string]interface{})
+		mb := make(map[string]interface{})
+		if err := json.Unmarshal([]byte(a), &ma); err != nil {
+			return err
+		}
+		if err := json.Unmarshal(b, &mb); err != nil {
+			return err
+		}
+		if !reflect.DeepEqual(ma, mb) {
+			return fmt.Errorf("expected json response to be:\n%s", a)
+		}
+		return nil
+
+	}
+}
 
 var testCases = []*TC{
 
 	&TC{
-		Name:    "register alice and get an access token",
-		Method:  POST,
-		URL:     "/register",
-		Type:    ApplicationJSON,
-		Body:    alice.JSON(),
-		ResFunc: hasKey("access_token"),
+		Name:  "register alice and get an access token",
+		URL:   "/register",
+		Body:  alice.JSON(),
+		Check: isAuthenticated(),
 	},
 
 	&TC{
-		Name:    "register bob and get an access token",
-		Method:  POST,
-		URL:     "/register",
-		Type:    ApplicationJSON,
-		Body:    bob.JSON(),
-		ResFunc: hasKey("access_token"),
+		Name:  "register bob and get an access token",
+		URL:   "/register",
+		Body:  bob.JSON(),
+		Check: isAuthenticated(),
 	},
 
 	&TC{
-		Name:    "register kate and get an access token",
-		Method:  POST,
-		URL:     "/register",
-		Type:    ApplicationJSON,
-		Body:    kate.JSON(),
-		ResFunc: hasKey("access_token"),
+		Name:  "register kate and get an access token",
+		URL:   "/register",
+		Body:  kate.JSON(),
+		Check: isAuthenticated(),
 	},
 
 	&TC{
-		Name:   "query me() on root for alice",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       me() {
         username
       }
     `,
-		ResBody: `{"me":{"username":"alice"}}`,
+		Check: isJSON(`{"me":{"username":"alice"}}`),
 	},
 
 	&TC{
-		Name:   "query me() on root for bob",
-		Method: POST,
-		URL:    "/query",
-		User:   bob,
-		Type:   TextPlain,
-		Body: `
-      me(){username}
-    `,
-		ResBody: `{"me":{"username":"bob"}}`,
+		Query: `me(){username}`,
+		User:  bob,
+		Check: isJSON(`{"me":{"username":"bob"}}`),
 	},
 
 	&TC{
-		Name:   "dynamically computed property uppername should return BOB",
-		Method: POST,
-		URL:    "/query",
-		User:   bob,
-		Type:   TextPlain,
-		Body: `
-      me(){uppername}
-    `,
-		ResBody: `{"me":{"uppername":"BOB"}}`,
+		Query: `me(){uppername}`,
+		User:  bob,
+		Check: isJSON(`{"me":{"uppername":"BOB"}}`),
 	},
 
 	&TC{
-		Name:   "add an email address for bob",
-		Method: POST,
-		URL:    "/exec",
-		User:   bob,
-		Type:   ApplicationJSON,
+		Name: "add an email address for bob",
+		URL:  "/exec",
+		User: bob,
 		Body: `
 			{
 				"name": "addEmailAddress",
 				"args": ["bob@bob.com"]
 			}
 		`,
-		ResFunc: isOK,
+		Check: isOK(),
 	},
 
 	&TC{
-		Name:   "adding same email address for bob again should fail due to unique prop",
-		Method: POST,
-		URL:    "/exec",
-		User:   bob,
-		Type:   ApplicationJSON,
+		Name: "adding same email address for bob again should fail due to unique prop",
+		URL:  "/exec",
+		User: bob,
 		Body: `
 			{
 				"name": "addEmailAddress",
 				"args": ["bob@bob.com"]
 			}
 		`,
-		ResCode: http.StatusBadRequest,
-		ResFunc: isError,
+		Check: isError(),
 	},
 
 	&TC{
-		Name:   "bob should have an email address",
-		Method: POST,
-		URL:    "/query",
-		User:   bob,
-		Type:   TextPlain,
-		Body: `
+		Query: `
       me(){
 				username
 				email_addresses() {
@@ -217,39 +220,33 @@ var testCases = []*TC{
 				}
 			}
     `,
-		ResBody: `
-			{
-				"me":{
-					"username":"bob",
-					"email_addresses": [
-						{"addr": "bob@bob.com"}
-					]
-				}
-			}`,
+		User: bob,
+		Check: isJSON(`{
+			"me":{
+				"username":"bob",
+				"email_addresses": [
+					{"addr": "bob@bob.com"}
+				]
+			}
+		}`),
 	},
 
 	&TC{
-		Name:   "update bob's email address",
-		Method: POST,
-		URL:    "/exec",
-		User:   bob,
-		Type:   ApplicationJSON,
+		Name: "update bob's email address",
+		URL:  "/exec",
+		User: bob,
 		Body: `
 			{
 				"name": "updateEmailAddress",
 				"args": ["bob@bob.com", "bob@gmail.com"]
 			}
 		`,
-		ResFunc: isOK,
+		Check: isOK(),
 	},
 
 	&TC{
-		Name:   "alice should NOT have any email addresses",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       me(){
 				username
 				email_addresses() {
@@ -257,83 +254,67 @@ var testCases = []*TC{
 				}
 			}
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"me":{
 					"username":"alice",
 					"email_addresses": []
 				}
-			}`,
+			}`),
 	},
 
 	&TC{
-		Name:   "query members().take(1)",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
+		User: alice,
+		Query: `
       members().take(1) {
         username
       }
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": [
 					{"username":"alice"}
 				]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "query members().slice(0,2)",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
+		User: alice,
+		Query: `
       members().slice(0,2) {
         username
       }
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": [
 					{"username":"alice"},
 					{"username":"bob"}
 				]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "query members().slice(2,1)",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
+		User: alice,
+		Query: `
       members().slice(2,1) {
         username
       }
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": [
 					{"username":"kate"}
 				]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "query members() on root with email addrs",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
+		User: alice,
+		Query: `
       members() {
         username
 				email_addresses() {
@@ -341,7 +322,7 @@ var testCases = []*TC{
 				}
       }
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": [
 					{"username":"alice", "email_addresses":[]},
@@ -349,108 +330,86 @@ var testCases = []*TC{
 					{"username":"kate","email_addresses":[]}
 				]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "give alice a SHOUTY and spacey email",
-		Method: POST,
-		URL:    "/exec",
-		User:   alice,
-		Type:   ApplicationJSON,
+		Name: "give alice a SHOUTY and spacey email",
+		URL:  "/exec",
+		User: alice,
 		Body: `
 			{
 				"name": "addEmailAddress",
 				"args": ["      ALICE@ALICE.com "]
 			}
 		`,
-		ResFunc: isOK,
+		Check: isOK(),
 	},
 
 	&TC{
-		Name:   "beforeChange hook should prevent adding an invalid email for alice",
-		Method: POST,
-		URL:    "/exec",
-		User:   alice,
-		Type:   ApplicationJSON,
+		Name: "beforeChange hook should prevent adding an invalid email for alice",
+		URL:  "/exec",
+		User: alice,
 		Body: `
 			{
 				"name": "addEmailAddress",
 				"args": ["not-an-email"]
 			}
 		`,
-		ResType: ApplicationJSON,
-		ResCode: http.StatusBadRequest,
-		ResFunc: isError,
+		Check: isError(),
 	},
 
 	&TC{
-		Name:   "beforeChange hook should prevent updating to an invalid email for alice",
-		Method: POST,
-		URL:    "/exec",
-		User:   alice,
-		Type:   ApplicationJSON,
+		Name: "beforeChange hook should prevent updating to an invalid email for alice",
+		URL:  "/exec",
+		User: alice,
 		Body: `
 			{
 				"name": "updateEmailAddress",
 				"args": ["alice@alice.com", "not-an-email"]
 			}
 		`,
-		ResType: ApplicationJSON,
-		ResCode: http.StatusBadRequest,
-		ResFunc: isError,
+		Check: isError(),
 	},
 
 	&TC{
-		Name:   "alice should have a single lowercased/trimmed email",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       me(){
 				email_addresses() {
 					addr
 				}
 			}
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"me":{
 					"email_addresses": [{"addr":"alice@alice.com"}]
 				}
-			}`,
+			}`),
 	},
 
 	&TC{
-		Name:   "members().pluck(username)",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(username)
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": ["alice","bob","kate"]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "pluck just the addrs from each member",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       members() {
         username
 				email_addresses().pluck(addr)
       }
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": [
 					{"username":"alice", "email_addresses":["alice@alice.com"]},
@@ -458,19 +417,15 @@ var testCases = []*TC{
 					{"username":"kate","email_addresses":[]}
 				]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "members().pluck(email_addresses{addr})",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(email_addresses{addr})
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": [
 					[{"addr":"alice@alice.com"}],
@@ -478,19 +433,15 @@ var testCases = []*TC{
 					[]
 				]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "members().pluck(email_addresses){addr}",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(email_addresses){addr}
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": [
 					[{"addr":"alice@alice.com"}],
@@ -498,263 +449,202 @@ var testCases = []*TC{
 					[]
 				]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "members().pluck(email_addresses.pluck(addr))",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(email_addresses.pluck(addr))
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": [["alice@alice.com"],["bob@gmail.com"],[]]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "members().pluck(email_addresses).pluck(addr)",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(email_addresses).pluck(addr)
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": [["alice@alice.com"],["bob@gmail.com"],[]]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "members().pluck(email_addresses).first(){addr}",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(email_addresses).first(){addr}
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": [{"addr":"alice@alice.com"}]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "members().pluck(email_addresses).pluck(addr).first()",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       first_email: members().pluck(email_addresses).pluck(addr).first()
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"first_email": ["alice@alice.com"]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "members().pluck(email_addresses).pluck(addr).count()",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(email_addresses).pluck(addr).count()
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": 3
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "can't pluck from an array of simple types",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(email_addresses).pluck(addr).pluck(addr)
     `,
-		ResCode: http.StatusBadRequest,
-		ResFunc: isError,
+		Check: isError(),
 	},
 
 	&TC{
-		Name:   "simple property types should not accept filters",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(email_addresses).pluck(addr.first())
     `,
-		ResCode: http.StatusBadRequest,
-		ResFunc: isError,
+		Check: isError(),
 	},
 
 	&TC{
-		Name:   "members().pluck(email_addresses.pluck(addr).first())",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(email_addresses.pluck(addr).first())
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": ["alice@alice.com","bob@gmail.com", null]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "take() from a plucked list",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(email_addresses.pluck(addr).first()).take(1)
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": ["alice@alice.com"]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "alice should be able to make friends with bob",
-		Method: POST,
-		URL:    "/exec",
-		User:   alice,
-		Type:   ApplicationJSON,
+		Name: "add bob as alice's friend",
+		URL:  "/exec",
+		User: alice,
 		Body: `
 			{
 				"name": "addFriend",
 				"args": ["` + bob.ID.String() + `"]
 			}
 		`,
-		ResFunc: isOK,
+		Check: isOK(),
 	},
 
 	&TC{
-		Name:   "bob should not be able to make friends with alice due to unique index",
-		Method: POST,
-		URL:    "/exec",
-		User:   bob,
-		Type:   ApplicationJSON,
+		Name: "bob should not be able to make friends with alice due to unique index",
+		URL:  "/exec",
+		User: bob,
 		Body: `
 			{
 				"name": "addFriend",
 				"args": ["` + alice.ID.String() + `"]
 			}
 		`,
-		ResCode: http.StatusBadRequest,
-		ResFunc: isError,
+		Check: isError(),
 	},
 
 	&TC{
-		Name:   "kate should be able to make friends with alice",
-		Method: POST,
-		URL:    "/exec",
-		User:   kate,
-		Type:   ApplicationJSON,
+		Name: "kate should be able to make friends with alice",
+		URL:  "/exec",
+		User: kate,
 		Body: `
 			{
 				"name": "addFriend",
 				"args": ["` + alice.ID.String() + `"]
 			}
 		`,
-		ResFunc: isOK,
+		Check: isOK(),
 	},
 
 	&TC{
-		Name:   "alice should see bob and kate as friends",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       me(){
 				friends() {
 					username
 				}
 			}
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"me":{
 					"friends": [{"username":"bob"},{"username":"kate"}]
 				}
-			}`,
+			}`),
 	},
 
 	&TC{
-		Name:   "bob should only see alice as a friend",
-		Method: POST,
-		URL:    "/query",
-		User:   bob,
-		Type:   TextPlain,
-		Body: `
+		User: bob,
+		Query: `
       me(){
 				friends() {
 					username
 				}
 			}
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"me":{
 					"friends": [{"username":"alice"}]
 				}
-			}`,
+			}`),
 	},
 
 	&TC{
-		Name:   "alice wants to be able to fetch just a single friend",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       me(){
 				friends().first() {
 					username
 				}
 			}
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"me":{
 					"friends": {"username":"bob"}
 				}
-			}`,
+			}`),
 	},
 
 	&TC{
-		Name:   "alice wants to be able to fetch bob and kate at the same time by aliasing",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       me(){
 				bob: friends.filter(id="` + bob.ID.String() + `").first() {
 					username
@@ -764,121 +654,93 @@ var testCases = []*TC{
 				}
 			}
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"me":{
 					"bob": {"username":"bob"},
 					"kate": {"username":"kate"}
 				}
-			}`,
+			}`),
 	},
 
 	&TC{
-		Name:   "alice wants to be able to filter her list of friends by id",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       me(){
 				friends.filter(id = "` + bob.ID.String() + `") {
 					id
 				}
 			}
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"me":{
 					"friends": [{"id":"` + bob.ID.String() + `"}]
 				}
-			}`,
+			}`),
 	},
 
 	&TC{
-		Name:   "fetch a simple list of numbers",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       numbers
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"numbers":[10,5,11]
-			}`,
+			}`),
 	},
 
 	&TC{
-		Name:   "fetch and sort a simple list of numbers",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       numbers.sort()
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"numbers":[5,10,11]
-			}`,
+			}`),
 	},
 
 	&TC{
-		Name:   "members().sort(username desc).pluck(username)",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
+		User: alice,
+		Query: `
       members().sort(username desc).pluck(username)
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": ["kate","bob","alice"]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "members().sort(username asc).pluck(username)",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
+		User: alice,
+		Query: `
       members().sort(username asc).pluck(username)
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": ["alice","bob","kate"]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "members().pluck(username).sort(desc)",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   ApplicationJSON,
-		Body: `
+		User: alice,
+		Query: `
       members().pluck(username).sort(desc)
     `,
-		ResBody: `
+		Check: isJSON(`
 			{
 				"members": ["kate","bob","alice"]
 			}
-		`,
+		`),
 	},
 
 	&TC{
-		Name:   "alice should see bob as a friend who should see alice as a friend ad infinitum",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       me(){
 				friends() {
 					username
@@ -891,7 +753,7 @@ var testCases = []*TC{
 				}
 			}
     `,
-		ResBody: `{
+		Check: isJSON(`{
 			"me":{
 				"friends":[{
 					"username":"bob",
@@ -915,24 +777,19 @@ var testCases = []*TC{
 					}]
 				}]
 			}
-		}`,
+		}`),
 	},
 
 	&TC{
-		Name:   "friends can't see friends passwords as it is never in the parent fields",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
       me(){
 				friends() {
 					password
 				}
 			}
     `,
-		ResCode: http.StatusBadRequest,
-		ResFunc: isError,
+		Check: isError(),
 	},
 
 	&TC{
@@ -940,16 +797,13 @@ var testCases = []*TC{
 		Method: POST,
 		URL:    "/exec",
 		User:   alice,
-		Type:   ApplicationJSON,
 		Body: `
 			{
 				"name": "destroyMember",
 				"args": []
 			}
 		`,
-		ResType: ApplicationJSON,
-		ResCode: http.StatusBadRequest,
-		ResFunc: isError,
+		Check: isError(),
 	},
 
 	&TC{
@@ -957,51 +811,48 @@ var testCases = []*TC{
 		Method: POST,
 		URL:    "/exec",
 		User:   bob,
-		Type:   ApplicationJSON,
 		Body: `
 			{
 				"name": "destroyMember",
 				"args": []
 			}
 		`,
-		ResFunc: isOK,
+		Check: isOK(),
 	},
 
 	&TC{
-		Name:   "count() should only show one address remaining due to cascading deletes",
-		Method: POST,
-		URL:    "/query",
-		User:   alice,
-		Type:   TextPlain,
-		Body: `
+		User: alice,
+		Query: `
 			remaining: email_addresses.count()
     `,
-		ResBody: `
-			{"remaining":1}`,
+		Check: isJSON(`{"remaining":1}`),
 	},
 }
 
 var server *Server
 
-// compare json bytes a to b
-func cmpjson(a, b []byte) bool {
-	ma := make(map[string]interface{})
-	mb := make(map[string]interface{})
-	if err := json.Unmarshal(a, &ma); err != nil {
-		log.Fatal("FAILED TO UNMARSHAL", a)
-		return false
-	}
-	if err := json.Unmarshal(b, &mb); err != nil {
-		log.Fatal("FAILED TO UNMARSHAL", b)
-		return false
-	}
-	return reflect.DeepEqual(ma, mb)
-}
-
 // Test converts a test case into a Request to execute against
 // the running server then evaluates that the response is what was
 // to be expected.
 func (tc *TC) Test() (e error) {
+	// query shorthand
+	if tc.Query != "" {
+		tc.URL = "/query"
+		re := regexp.MustCompile(`[\s\n]+`)
+		tc.Name = strings.TrimSpace(re.ReplaceAllString(tc.Query, " "))
+		q := &struct {
+			Query string `json:"query"`
+			Args  []interface{}
+		}{
+			Query: tc.Query,
+			Args:  tc.QueryArgs,
+		}
+		b, err := json.Marshal(q)
+		if err != nil {
+			panic("failed to marshal tc.Query")
+		}
+		tc.Body = string(b)
+	}
 	buf := &bytes.Buffer{}
 	fmt.Fprintln(buf)
 	fmt.Fprintln(buf, "+------------------------------------------")
@@ -1020,9 +871,6 @@ func (tc *TC) Test() (e error) {
 			panic(r)
 		}
 	}()
-	if tc.Type == "" {
-		tc.Type = ApplicationJSON
-	}
 	// authenticate
 	if tc.User != nil {
 		if tc.User.Token == "" {
@@ -1058,8 +906,9 @@ func (tc *TC) Test() (e error) {
 	if err != nil {
 		return fail("failed to build request: %v", err)
 	}
+	req.Header.Set("Content-Type", ApplicationJSON)
 	fmt.Fprintln(buf, " ---->", tc.Method, tc.URL)
-	fmt.Fprintln(buf, " ----> Content-Type:", tc.Type)
+	fmt.Fprintln(buf, " ----> Content-Type:", ApplicationJSON)
 	if tc.User != nil && tc.User.Token != "" {
 		fmt.Fprintln(buf, " ----> Authorization: bearer", tc.User.Token, "("+tc.User.Username+")")
 		req.Header.Add("Authorization", "bearer "+tc.User.Token)
@@ -1084,40 +933,18 @@ func (tc *TC) Test() (e error) {
 	fmt.Fprintln(buf, " <---- Status:", res.StatusCode)
 	fmt.Fprintln(buf, " <---- Content-Type:", resType)
 	fmt.Fprintln(buf, " <----", resBody)
-	// check response code
-	if tc.ResCode == 0 {
-		tc.ResCode = http.StatusOK
-	}
-	if tc.ResCode != res.StatusCode {
-		return fail("expected status code to be %v", tc.ResCode)
-	}
 	// check the response type matches
 	if resType == "" {
 		return fail("expected response to have a Content-Type")
 	}
-	if tc.ResType == "" {
-		tc.ResType = ApplicationJSON
+	if resType != ApplicationJSON {
+		return fail("response Content-Type to be %v", ApplicationJSON)
 	}
-	if tc.ResType != resType {
-		return fail("response Content-Type to be %v", tc.ResType)
+	if tc.Check == nil {
+		return fail("no Check for test")
 	}
-	if tc.ResFunc != nil {
-		if err := tc.ResFunc(b); err != nil {
-			return fail("failure during ResFunc: %v", err)
-		}
-	} else {
-		switch tc.ResType {
-		case ApplicationJSON:
-			if !cmpjson([]byte(tc.ResBody), b) {
-				return fail("expected json response to be:\n%v", tc.ResBody)
-			}
-		case TextPlain:
-			if tc.ResBody != string(b) {
-				return fail("expected text response to be:\n%v", tc.ResBody)
-			}
-		default:
-			return fail("don't know how to deal with %v", tc.ResType)
-		}
+	if err := tc.Check(b, res); err != nil {
+		return fail("%v", err)
 	}
 	return nil
 }

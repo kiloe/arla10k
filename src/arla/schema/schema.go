@@ -10,11 +10,17 @@ import (
 // (which is a UUID v1 - therefore also has a rough timestamp encoded). Each
 // mutation also contains the ID of the user/account that submitted the mutation.
 type Mutation struct {
-	ID     UUID          `json:",omitempty"`
-	Token  Token         `json:",omitempty"`
-	Name   string        `json:",omitempty"`
-	Args   []interface{} `json:",omitempty"`
-	Status string        `json:",omitempty"`
+	ID     UUID          `json:"id,omitempty"`
+	Token  Token         `json:"token,omitempty"`
+	Name   string        `json:"name,omitempty"`
+	Args   []interface{} `json:"args,omitempty"`
+	Status string        `json:"status,omitempty"`
+}
+
+// Query is the request format for AQL queries with arguments
+type Query struct {
+	Query string        `json:"query,omitempty"`
+	Args  []interface{} `json:"args,omitempty"`
 }
 
 // Arg is an argument for a mutation action.
