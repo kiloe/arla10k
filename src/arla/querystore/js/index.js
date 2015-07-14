@@ -202,6 +202,7 @@ class QueryError extends Error {
     return plv8.quote_literal(v.value);
   }
 
+  // returns an SQL select with (single row single column)
 	function sqlForProperty(klass, session, ast, vars=[], i=0){
     // fetch requested property
 		let property = klass[ast.name];
@@ -441,11 +442,66 @@ class QueryError extends Error {
     }
 	}
 
+  // returns an SQL select with (multi row multi column)
 	function sqlForClass(klass, session, ast, vars=[], i=0){
 		return "select " + ast.props.map(function(p){
 			return sqlForProperty(klass, session, p, vars, i) + ` as ${p.alias}`;
 		}).join(',');
 	}
+
+  // hash of property signature
+  // FIXME: naive
+  function sig(p){
+    return JSON.stringify({
+      name: p.name,
+      filters: p.filters,
+      args: p.args
+    });
+  }
+
+  // deduplicates property selections
+  function normalizeProps(props) {
+    let seen = {};
+    return props.filter(function(p){
+      if( p.props.length > 0 ){
+        p.props = normalizeProps(p.props)
+      }
+      let curr = {p:p, sig:sig(p)};
+      let prev = seen[p.alias];
+      if( prev ){
+        // mismatched signatures
+        if( prev.sig != curr.sig ){
+          throw new QueryError({message:"property clash"})
+        }
+        // merge
+        mergeProps(prev.p.props, curr.p.props);
+        // drop
+        return false;
+      }
+      seen[p.alias] = curr;
+      return true;
+    })
+  }
+
+  function mergeProps(dest, src){
+    src.forEach(function(sp){
+      let found = false;
+      dest.forEach(function(dp){
+        if( sp.alias == dp.alias ){
+          found = true;
+          // check for conflicts
+          if( sig(sp) != sig(dp) ){
+            throw new QueryError({message:"property clash during merge"})
+          }
+          mergeProps(dp.props, sp.props);
+        }
+      })
+      // if not found - add it
+      if( !found ){
+        dest.push(sp);
+      }
+    })
+  }
 
 	arla.trigger = function(e){
 		let op = e.opKind + '-' + e.op;
@@ -550,7 +606,9 @@ class QueryError extends Error {
 			}
 			throw err;
 		}
-		console.debug("AST:", ast);
+		console.debug("AST (raw):", ast);
+    ast.props = normalizeProps(ast.props);
+		console.debug("AST (normalized):", ast);
     if( ast.name != 'root' ){
       throw new QueryError({message:`expected root() property got ${ast.name}`});
     }

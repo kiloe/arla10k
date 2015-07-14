@@ -94,7 +94,7 @@ func (tc *TestCase) ShouldReturn(jsonResponse string) *TestCase {
 			return fmt.Errorf("failed to decode json response")
 		}
 		if !reflect.DeepEqual(tc.resMap, expectedMap) {
-			return fmt.Errorf("expected json response to be: %s", jsonResponse)
+			return fmt.Errorf("expected json response to be: %s\nbut got: %s\n", jsonResponse, tc.resString)
 		}
 		return nil
 	})

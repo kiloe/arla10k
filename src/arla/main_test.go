@@ -353,10 +353,10 @@ func TestAPI(t *testing.T) {
 	// placeholders can be used for arguments
 	alice.Query(`
 		me(){
-			bob: friends.filter(id = $1).first() {
+			bob:friends.filter(id = $1).first() {
 				username
 			}
-			kate: friends.filter(id = $2).first() {
+			kate:friends.filter($2 = id).first() {
 				username
 			}
 		}
@@ -403,6 +403,44 @@ func TestAPI(t *testing.T) {
 			"members": ["kate","bob","alice"]
 		}
 	`)
+
+	// -------------------
+
+	// identical simple properties should be merged
+	bob.Query(`
+		members().first() {
+			username
+			username
+		}
+	`).ShouldReturn(`
+		{
+			"members": {"username":"alice"}
+		}
+	`)
+
+	// identical dynamic properties should be merged
+	bob.Query(`
+		members().first(){
+			id
+		}
+		members().first(){
+			username
+		}
+	`).ShouldReturn(`
+		{
+			"members": {"username":"alice","id":"` + alice.ID.String() + `"}
+		}
+	`)
+
+	// non-identical dynamic properties cannot be merged
+	bob.Query(`
+		members().first(){
+			id
+		}
+		members(){
+			username
+		}
+	`).ShouldFail()
 
 	// -----------------------------
 
