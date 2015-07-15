@@ -471,7 +471,9 @@ class QueryError extends Error {
       if( prev ){
         // mismatched signatures
         if( prev.sig != curr.sig ){
-          throw new QueryError({message:"property clash"})
+          throw new QueryError({
+            message:`conflicting properties named '${p.alias}'`,
+          });
         }
         // merge
         mergeProps(prev.p.props, curr.p.props);
@@ -491,7 +493,9 @@ class QueryError extends Error {
           found = true;
           // check for conflicts
           if( sig(sp) != sig(dp) ){
-            throw new QueryError({message:"property clash during merge"})
+            throw new QueryError({
+              message:`conflicting properties for '${sp.alias}' cannot be merged`
+            });
           }
           mergeProps(dp.props, sp.props);
         }

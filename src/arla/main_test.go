@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/mgutz/ansi"
 )
 
 var OK = ``
@@ -432,6 +435,38 @@ func TestAPI(t *testing.T) {
 		}
 	`)
 
+	// identical dynamic filter properties can be merged
+	bob.Query(`
+		members().filter(username = "bob"){
+			id
+		}
+		members().filter("bob" = username){
+			username
+		}
+	`).ShouldReturn(`
+		{
+			"members": [{"username":"bob","id":"` + bob.ID.String() + `"}]
+		}
+	`)
+
+	// identical complex properties should be merged
+	bob.Query(`
+		members(){
+			email_addresses.pluck(addr)
+		}
+		members(){
+			username
+		}
+	`).ShouldReturn(`
+		{
+			"members": [
+				{"username":"alice", "email_addresses":["alice@alice.com"]},
+				{"username":"bob", "email_addresses":["bob@gmail.com"]},
+				{"username":"kate", "email_addresses":[]}
+			]
+		}
+	`)
+
 	// non-identical dynamic properties cannot be merged
 	bob.Query(`
 		members().first(){
@@ -479,6 +514,11 @@ func TestMain(m *testing.M) {
 	time.Sleep(1 * time.Second)
 	// run tests
 	status := m.Run()
+	if status == 0 {
+		fmt.Println(ansi.Green, "PASS", ansi.Reset)
+	} else {
+		fmt.Println(ansi.Red, "TESTS FAILED", ansi.Reset)
+	}
 	// shutdown server
 	if err := server.Stop(); err != nil {
 		log.Fatal("failed to cleanly stop server:", err)

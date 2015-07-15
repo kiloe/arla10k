@@ -91,7 +91,7 @@ func (tc *TestCase) ShouldReturn(jsonResponse string) *TestCase {
 	tc.Checks = append(tc.Checks, func() error {
 		expectedMap := make(map[string]interface{})
 		if err := json.Unmarshal([]byte(jsonResponse), &expectedMap); err != nil {
-			return fmt.Errorf("failed to decode json response")
+			return fmt.Errorf("invalid json in test case- ie. the test itself is broken")
 		}
 		if !reflect.DeepEqual(tc.resMap, expectedMap) {
 			return fmt.Errorf("expected json response to be: %s\nbut got: %s\n", jsonResponse, tc.resString)

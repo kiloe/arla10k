@@ -86,11 +86,13 @@ filter "filter"
 	= "." f:(first / take / slice / unique / count / pluck / where / sort / sortBy) { return f }
 
 where "where"
-	= "filter(" WS* a:value WS* op:op WS* b:value WS* ")" { return {
+	= "filter(" WS* a:value WS* op:op WS* b:value WS* ")" {
+	var vals = [a,b].sort(function(a,b){ return a.value > b.value });
+	return {
 		name: "where",
-		a: a,
+		a: vals[0],
 		op: op,
-		b: b
+		b: vals[1]
 	} }
 
 first "first"
