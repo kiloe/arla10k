@@ -10,8 +10,6 @@ import (
 	"github.com/mgutz/ansi"
 )
 
-var OK = ``
-
 func TestAPI(t *testing.T) {
 
 	// create our test users
@@ -67,57 +65,7 @@ func TestAPI(t *testing.T) {
 	// execute mutation to change email address
 	bob.Exec("updateEmailAddress", "bob@bob.com", "bob@gmail.com").ShouldSucceed()
 
-	// ensure alice doesn't have any email addresses yet
-	alice.Query(`
-    me(){
-			username
-			email_addresses() {
-				addr
-			}
-		}
-  `).ShouldReturn(`
-		{
-			"me":{
-				"username":"alice",
-				"email_addresses": []
-			}
-		}
-	`)
-
-	// use take() filter to grab just the first member
-	alice.Query(`members().take(1){username}`).ShouldReturn(`
-		{
-			"members": [
-				{"username":"alice"}
-			]
-		}
-	`)
-
-	alice.Query(`
-		members().slice(0,2) {
-			username
-		}
-	`).ShouldReturn(`
-		{
-			"members": [
-				{"username":"alice"},
-				{"username":"bob"}
-			]
-		}
-	`)
-
-	alice.Query(`
-		members().slice(2,1) {
-			username
-		}
-	`).ShouldReturn(`
-		{
-			"members": [
-				{"username":"kate"}
-			]
-		}
-	`)
-
+	// ...check email addresses are as expected
 	alice.Query(`
 		members() {
 			username
@@ -132,6 +80,23 @@ func TestAPI(t *testing.T) {
 				{"username":"bob", "email_addresses":[{"addr":"bob@gmail.com"}]},
 				{"username":"kate","email_addresses":[]}
 			]
+		}
+	`)
+
+	// ensure alice doesn't have any email addresses yet
+	alice.Query(`
+    me(){
+			username
+			email_addresses() {
+				addr
+			}
+		}
+  `).ShouldReturn(`
+		{
+			"me":{
+				"username":"alice",
+				"email_addresses": []
+			}
 		}
 	`)
 
@@ -156,6 +121,8 @@ func TestAPI(t *testing.T) {
 			}
 		}
 	`)
+
+	// ----------------------------------------
 
 	// pluck should allow pulling a single property from members
 	alice.Query(`members().pluck(username)`).ShouldReturn(`
@@ -253,6 +220,8 @@ func TestAPI(t *testing.T) {
 		}
 	`)
 
+	// ----------------------------------------
+
 	// test relationships
 	alice.Exec("addFriend", bob.ID.String()).ShouldSucceed()
 	bob.Exec("addFriend", alice.ID.String()).ShouldFail() // already friends
@@ -337,6 +306,37 @@ func TestAPI(t *testing.T) {
 		}
 	`)
 
+	// ----------------------------------------
+
+	// use take() filter to grab just the first member
+	alice.Query(`members().take(1){username}`).ShouldReturn(`
+		{
+			"members": [
+				{"username":"alice"}
+			]
+		}
+	`)
+
+	// use first() filter to grab just the first member AND just grab the object
+	alice.Query(`members().first(){username}`).ShouldReturn(`
+		{
+			"members": {"username":"alice"}
+		}
+	`)
+
+	// use slice(0,2) to perform an OFFSET=2 LIMIT=1
+	alice.Query(`
+		members().slice(2,1) {
+			username
+		}
+	`).ShouldReturn(`
+		{
+			"members": [
+				{"username":"kate"}
+			]
+		}
+	`)
+
 	// filter should allow simple where-style clauses
 	alice.Query(`
 		me(){
@@ -372,6 +372,8 @@ func TestAPI(t *testing.T) {
 		}
 	`)
 
+	// -------------------
+
 	// should be possible to use arbitary SQL queries for results
 	alice.Query(`numbers`).ShouldReturn(`
 		{
@@ -400,7 +402,7 @@ func TestAPI(t *testing.T) {
 		}
 	`)
 
-	// should be possible to sort on simple arrays
+	// should be possible to sort on simple arrays with a direction
 	alice.Query(`members().pluck(username).sort(desc)`).ShouldReturn(`
 		{
 			"members": ["kate","bob","alice"]
@@ -475,6 +477,12 @@ func TestAPI(t *testing.T) {
 		members(){
 			username
 		}
+	`).ShouldFail()
+
+	// clashing aliases cannot be merged
+	bob.Query(`
+		people:members().take(1)
+		people:members().take(2)
 	`).ShouldFail()
 
 	// -----------------------------
