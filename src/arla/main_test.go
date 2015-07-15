@@ -481,8 +481,8 @@ func TestAPI(t *testing.T) {
 
 	// clashing aliases cannot be merged
 	bob.Query(`
-		people:members().take(1)
-		people:members().take(2)
+		people:members().take(1){username}
+		people:members().take(2){username}
 	`).ShouldFail()
 
 	// -----------------------------
