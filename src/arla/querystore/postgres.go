@@ -99,13 +99,15 @@ func (p *postgres) GetLogLevel() logLevel {
 
 // Stop disconnects and shutsdown the queryengine
 func (p *postgres) Stop() (err error) {
-	err = p.cmd.Process.Kill()
-	close(p.quit)
-	return
+	p.cmd.Process.Signal(os.Kill)
+	return nil
 }
 
 // Mutate applies a schema.Mutation to the data
 func (p *postgres) Mutate(m *schema.Mutation) error {
+	if m.Name == "" {
+		return fmt.Errorf("invalid mutation name")
+	}
 	p.execMu.Lock()
 	defer p.execMu.Unlock()
 	b, err := json.Marshal(m)
@@ -203,7 +205,8 @@ func (p *postgres) NewWriter() (w io.WriteCloser, err error) {
 }
 
 func (p *postgres) Wait() error {
-	return <-p.quit
+	<-p.quit
+	return nil
 }
 
 func (p *postgres) spawn() (err error) {
@@ -217,7 +220,8 @@ func (p *postgres) spawn() (err error) {
 		return err
 	}
 	go func() {
-		p.quit <- p.cmd.Wait()
+		p.cmd.Process.Wait()
+		close(p.quit)
 	}()
 	// wait until responsive
 	select {

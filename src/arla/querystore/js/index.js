@@ -545,12 +545,18 @@ class QueryError extends Error {
 	};
 
 	arla.exec = function({name, args, token}){
+    if( !name ){
+      throw new UserError("invalid action name");
+    }
+    if( !args ){
+      args = [];
+    }
 		var fn = actions[name];
 		if( !fn ){
 			if( /^[a-zA-Z0-9_]+$/.test(name) ){
-				throw new Error(`no such action ${name}`);
+				throw new UserError(`no such action ${name}`);
 			} else {
-				throw new Error('invalid action');
+				throw new UserError('invalid action name');
 			}
 		}
 		// exec the mutation func

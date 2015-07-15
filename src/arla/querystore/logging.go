@@ -44,7 +44,6 @@ func (ll logLevel) Fprintln(w io.Writer, args ...interface{}) (n int, err error)
 	case ERROR:
 		fmt.Fprintf(w, ansi.Red)
 	}
-	fmt.Fprint(w, ll, "--> ")
 	return fmt.Fprintln(w, args...)
 }
 
