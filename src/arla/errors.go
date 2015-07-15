@@ -1,6 +1,7 @@
 package main
 
 import (
+	"arla/schema"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -21,6 +22,8 @@ type Error struct {
 	Property string `json:"property,omitempty"`
 	Type     string `json:"type,omitempty"`
 	Kind     string `json:"kind,omitempty"`
+	// MutationError fields
+	Mutation *schema.Mutation `json:"mutation,omitempty"`
 }
 
 func (e *Error) Error() string {
@@ -45,6 +48,9 @@ func userError(err error) *Error {
 			e.Message = strings.Replace(pgerr.Message, "UserError: ", "", 1)
 		} else if strings.HasPrefix(pgerr.Message, "QueryError:") {
 			b := []byte(strings.Replace(pgerr.Message, "QueryError: ", "", 1))
+			json.Unmarshal(b, &e)
+		} else if strings.HasPrefix(pgerr.Message, "MutationError:") {
+			b := []byte(strings.Replace(pgerr.Message, "MutationError: ", "", 1))
 			json.Unmarshal(b, &e)
 		}
 	}

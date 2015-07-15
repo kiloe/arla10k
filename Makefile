@@ -57,13 +57,8 @@ clean:
 	docker rmi -f $(IMAGE) 2>/dev/null || true
 
 
-test-arla: all
-	$(GO) get -t arla
-	$(GO) test -v arla
-
 test: all
-	$(GO) test -v arla/querystore
-	$(GO) test -v arla/mutationstore
+	$(GO) get -t arla
 	$(GO) test -v arla
 
 .PHONY: default build test release clean

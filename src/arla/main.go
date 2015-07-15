@@ -105,18 +105,26 @@ func (s *Server) startLog() (err error) {
 // replayLog sends all previous mutations to the querystore
 func (s *Server) replayLog() (err error) {
 	start := time.Now()
+	defer func() {
+		if err == nil {
+			fmt.Printf("%d mutations replayed in %s\n", s.ms.Len(), time.Since(start))
+		}
+	}()
 	oldLogLevel := s.qs.GetLogLevel()
 	s.qs.SetLogLevel(querystore.ERROR)
 	w, err := s.qs.NewWriter()
 	if err != nil {
 		return fmt.Errorf("failed to create mutation writer: %s", err)
 	}
-	defer w.Close()
+	defer func() {
+		if e := w.Close(); e != nil && err == nil {
+			err = e
+		}
+	}()
 	if _, err := s.ms.WriteTo(w); err != nil {
 		return fmt.Errorf("error streaming mutations to querystore: %s", err)
 	}
 	s.qs.SetLogLevel(oldLogLevel)
-	fmt.Printf("%d mutations replayed in %s\n", s.ms.Len(), time.Since(start))
 	return nil
 }
 
@@ -350,6 +358,7 @@ func (s *Server) Start() (err error) {
 		return
 	}
 	if err = s.replayLog(); err != nil {
+		fmt.Println("FAILED REPLAY", err)
 		return
 	}
 	if err = s.startHTTP(); err != nil {

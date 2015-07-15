@@ -28,6 +28,21 @@ class QueryError extends Error {
   }
 }
 
+// MutationError is returned when exec fails.
+// It contains the entire mutation
+class MutationError extends Error {
+  constructor(o) {
+    var err = super(o.message);
+    o.error = o.message;
+    delete o.message;
+    Object.assign(this, {
+      name: "MutationError",
+      message: JSON.stringify(o),
+      stack: err.stack,
+    });
+  }
+}
+
 (function(){
 
 	var listeners = {};
@@ -583,10 +598,17 @@ class QueryError extends Error {
 			}
 			if( e.message ){
 				if( (/violates unique constraint/i).test(e.message) ){
-					throw new UserError("violates unique constraint");
+					e.message = "violates unique constraint";
 				}
 			}
-			throw e;
+			throw new MutationError({
+        message: e.message,
+        mutation: {
+          name: name,
+          args:args,
+          token:token
+        }
+      })
 		}
 	};
 

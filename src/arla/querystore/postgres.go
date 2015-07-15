@@ -189,19 +189,7 @@ func (p *postgres) Start() (err error) {
 }
 
 func (p *postgres) NewWriter() (w io.WriteCloser, err error) {
-	// setup the writer interface
-	if p.writeCmd, err = p.command("psql", "-v", "ON_ERROR_STOP=1"); err != nil {
-		return
-	}
-	if w, err = p.writeCmd.StdinPipe(); err != nil {
-		return
-	}
-	p.writeCmd.Stdout = devNull
-	p.writeCmd.Stderr = devNull
-	if err = p.writeCmd.Start(); err != nil {
-		return
-	}
-	return
+	return newPgWriter(p)
 }
 
 func (p *postgres) Wait() error {
