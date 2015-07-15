@@ -602,7 +602,7 @@ class MutationError extends Error {
 				}
 			}
 			throw new MutationError({
-        message: e.message,
+        message: e.message.replace('UserError: ', ''),
         mutation: {
           name: name,
           args:args,

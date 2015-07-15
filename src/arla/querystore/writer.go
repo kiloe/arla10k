@@ -1,7 +1,6 @@
 package querystore
 
 import (
-	"fmt"
 	"io"
 	"os/exec"
 )
@@ -9,7 +8,7 @@ import (
 type pgWriter struct {
 	p   *postgres
 	cmd *exec.Cmd
-	err error
+	err chan error
 	io.WriteCloser
 }
 
@@ -30,15 +29,14 @@ func newPgWriter(p *postgres) (pgw *pgWriter, err error) {
 		return
 	}
 
+	pgw.err = make(chan error)
 	go func() {
-		if err := pgw.cmd.Wait(); err != nil {
-			pgw.err = fmt.Errorf("streaming to querystore failed: %v", err)
-		}
+		pgw.err <- pgw.cmd.Wait()
 	}()
 	return
 }
 
 func (pgw *pgWriter) Close() error {
 	pgw.WriteCloser.Close()
-	return pgw.err
+	return <-pgw.err
 }
