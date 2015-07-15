@@ -85,7 +85,6 @@ func (s *Server) startQueryEngine() (err error) {
 		}
 		s.qs = nil
 		fmt.Println("queryengine shutdown")
-		s.Stop()
 	}()
 	return nil
 }
@@ -333,7 +332,6 @@ func (s *Server) startHTTP() error {
 		}
 		s.http = nil
 		fmt.Println("http server shutdown")
-		s.Stop()
 	}()
 	return nil
 }
