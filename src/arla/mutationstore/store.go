@@ -121,16 +121,19 @@ func (l *Log) WriteTo(w io.Writer) (n int64, err error) {
 	suffix := "'::json);\n"
 	s := bufio.NewScanner(f)
 	nx := 0
-	line := 0
 	for s.Scan() {
-		line++
+		b := s.Bytes()
+		// skip blank lines
+		if len(b) == 0 {
+			continue
+		}
 		// write prefix
 		if nx, err = w.Write([]byte(prefix)); err != nil {
 			return
 		}
 		n += int64(nx)
 		// write line
-		if nx, err = w.Write(s.Bytes()); err != nil {
+		if nx, err = w.Write(b); err != nil {
 			return
 		}
 		n += int64(nx)
