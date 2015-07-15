@@ -36,10 +36,14 @@ func userError(err error) *Error {
 		Message: "there was a problem processing your request",
 	}
 	if pgerr, ok := err.(pgx.PgError); ok {
+		// strip supurfluous Error that gets added via plv8 somewhere
+		if strings.HasPrefix(pgerr.Message, "Error: ") {
+			pgerr.Message = strings.Replace(pgerr.Message, "Error: ", "", 1)
+		}
+		// Detect errors with extended info
 		if strings.HasPrefix(pgerr.Message, "UserError:") {
 			e.Message = strings.Replace(pgerr.Message, "UserError: ", "", 1)
-		}
-		if strings.HasPrefix(pgerr.Message, "QueryError:") {
+		} else if strings.HasPrefix(pgerr.Message, "QueryError:") {
 			b := []byte(strings.Replace(pgerr.Message, "QueryError: ", "", 1))
 			json.Unmarshal(b, &e)
 		}
