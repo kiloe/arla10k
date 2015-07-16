@@ -87,6 +87,8 @@ type postgres struct {
 	writeCmd *exec.Cmd
 	// log output
 	log *LogFormatter
+	// user cfg
+	info *schema.Info
 }
 
 func (p *postgres) SetLogLevel(level logLevel) {
@@ -103,6 +105,11 @@ func (p *postgres) Stop() (err error) {
 	return nil
 }
 
+// Info returns details used for introspection
+func (p *postgres) Info() (*schema.Info, error) {
+	return p.info, nil
+}
+
 // Mutate applies a schema.Mutation to the data
 func (p *postgres) Mutate(m *schema.Mutation) error {
 	if m.Name == "" {
@@ -110,6 +117,7 @@ func (p *postgres) Mutate(m *schema.Mutation) error {
 	}
 	p.execMu.Lock()
 	defer p.execMu.Unlock()
+	m.Version = p.info.Version
 	b, err := json.Marshal(m)
 	if err != nil {
 		return err
@@ -184,6 +192,15 @@ func (p *postgres) Start() (err error) {
 	})
 	if err != nil {
 		return
+	}
+	// load app info
+	var s string
+	r := p.queryPool.QueryRow("select arla_info()")
+	if err := r.Scan(&s); err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(s), &p.info); err != nil {
+		return err
 	}
 	return nil
 }

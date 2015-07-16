@@ -1,8 +1,12 @@
 package main
 
 import (
+	"arla/schema"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -10,19 +14,25 @@ import (
 	"github.com/mgutz/ansi"
 )
 
+// create our test users
+var (
+	alice = NewUser("alice", "%alice123")
+	bob   = NewUser("bob", "bobzpasswerd")
+	kate  = NewUser("kate", "katington1")
+)
+
 func TestAPI(t *testing.T) {
 
-	// create our test users
-	alice := NewUser("alice", "%alice123")
-	bob := NewUser("bob", "bobzpasswerd")
-	kate := NewUser("kate", "katington1")
+	// alice should already exist (created by loading the mutation log)
+	alice.Authenticate().ShouldBeAuthenticated()
 
-	// register/login
-	alice.Register().ShouldBeAuthenticated()
+	// register bob
 	bob.Register().ShouldBeAuthenticated()
 
-	// ensure random people can't authenticate
+	// kate shouldn't be able to login as she doesn't exist yet
 	kate.Authenticate().ShouldFail()
+
+	// register kate and login
 	kate.Register().ShouldBeAuthenticated()
 	kate.Authenticate().ShouldBeAuthenticated()
 
@@ -506,7 +516,51 @@ func TestAPI(t *testing.T) {
 	}
 }
 
+func TestInfo(t *testing.T) {
+	res, err := http.Get("http://localhost/info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := &schema.Info{}
+	b, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.Version != 2 {
+		t.Fatal("expected version=1")
+	}
+	found := false
+	for _, name := range info.Mutations {
+		if name == "registerMember" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected registerMember to appear in the list of info.Mutations")
+	}
+}
+
 func TestMain(m *testing.M) {
+	// write a mutation log
+	f, err := os.Create("/tmp/datastore")
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Add an entry for a mutation with an older version number
+	// so we can test transforming
+	err = json.NewEncoder(f).Encode(&schema.Mutation{
+		Name:    "createUser",
+		Args:    []interface{}{alice.ID, alice.Username, alice.Password},
+		Version: 1,
+	})
+	f.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
 	// start server
 	server := New(Config{
 		ConfigPath: "/app/test-app/index.js",
@@ -522,6 +576,7 @@ func TestMain(m *testing.M) {
 	time.Sleep(1 * time.Second)
 	// run tests
 	status := m.Run()
+	defer os.Exit(status)
 	if status == 0 {
 		fmt.Println(ansi.Green, "PASS", ansi.Reset)
 	} else {
@@ -529,7 +584,6 @@ func TestMain(m *testing.M) {
 	}
 	// shutdown server
 	if err := server.Stop(); err != nil {
-		log.Fatal("failed to cleanly stop server:", err)
+		fmt.Println("failed to cleanly stop server:", err)
 	}
-	os.Exit(status)
 }

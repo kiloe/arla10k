@@ -51,6 +51,7 @@ type Config struct {
 // Server is an HTTP server
 type Server struct {
 	cfg      Config
+	info     *schema.Info
 	qs       querystore.Engine
 	ms       *mutationstore.Log
 	mux      *http.ServeMux
@@ -86,6 +87,11 @@ func (s *Server) startQueryEngine() (err error) {
 		s.qs = nil
 		fmt.Println("queryengine shutdown")
 	}()
+	s.info, err = s.qs.Info()
+	if err != nil {
+		return err
+	}
+	fmt.Println("api version", s.info.Version)
 	return nil
 }
 
@@ -184,6 +190,15 @@ func (s *Server) registrationHandler(w http.ResponseWriter, r *http.Request) *Er
 	return s.login(w, string(b))
 }
 
+// infoHandler returns introspection info about the server.
+func (s *Server) infoHandler(w http.ResponseWriter, r *http.Request) *Error {
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(s.info); err != nil {
+		return internalError(err)
+	}
+	return nil
+}
+
 // authenticationHandler processes authentication requests by passing the JSON
 // request body to the javascript function defined in arla.cfg.authenticate
 // if authentication is successful then an access token is returned.
@@ -200,9 +215,8 @@ func (s *Server) authenticationHandler(w http.ResponseWriter, r *http.Request) *
 // a status of whether that was all a success or not.
 func (s *Server) execHandler(w http.ResponseWriter, r *http.Request, t schema.Token) *Error {
 	// read the mutation json
-	dec := json.NewDecoder(r.Body)
 	var m schema.Mutation
-	err := dec.Decode(&m)
+	err := json.NewDecoder(r.Body).Decode(&m)
 	if err != nil {
 		return userError(err)
 	}
@@ -218,8 +232,7 @@ func (s *Server) execHandler(w http.ResponseWriter, r *http.Request, t schema.To
 		return userError(err)
 	}
 	// return ok
-	enc := json.NewEncoder(w)
-	err = enc.Encode(&struct {
+	err = json.NewEncoder(w).Encode(&struct {
 		// ID      schema.UUID `json:"id,omitempty"`
 		Success bool `json:"success"`
 	}{
@@ -238,8 +251,7 @@ func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request, t schema.T
 	q := &schema.Query{
 		Token: t,
 	}
-	dec := json.NewDecoder(r.Body)
-	if err := dec.Decode(&q); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
 		return userError(err)
 	}
 	if err := s.qs.Query(q, w); err != nil {
@@ -358,7 +370,7 @@ func (s *Server) Start() (err error) {
 		return
 	}
 	if err = s.replayLog(); err != nil {
-		fmt.Println("FAILED REPLAY", err)
+		fmt.Println("FAILED TO REPLAY MUTATIONS", err)
 		return
 	}
 	if err = s.startHTTP(); err != nil {
@@ -367,7 +379,7 @@ func (s *Server) Start() (err error) {
 	return nil
 }
 
-// Wait blocks indefinitily while the server is running
+// Wait blocks while the server is running
 func (s *Server) Wait() error {
 	s.wg.Wait()
 	return nil
@@ -422,6 +434,7 @@ func New(cfg Config) *Server {
 		cfg: cfg,
 		mux: http.NewServeMux(),
 	}
+	s.addHandler("/info", s.infoHandler)
 	s.addHandler("/register", s.registrationHandler)
 	s.addHandler("/authenticate", s.authenticationHandler)
 	s.addAuthenticatedHandler("/exec", s.execHandler)

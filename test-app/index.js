@@ -2,6 +2,8 @@ import * as actions from "./actions";
 import * as schema from "./schema";
 
 arla.configure({
+  // set the API version
+  version: 2,
   // actions declares the mutation functions that are exposed
   actions: actions,
   // schema is an Object that declares the struture of your data
@@ -24,9 +26,35 @@ arla.configure({
   register(values){
     values.password = pgcrypto.crypt(values.password);
     return {
-      Name: "registerMember",
-      Args:[values]
+      name: "registerMember",
+      args:[values]
     }
-  }
+  },
+  // transform is called when a mutation with a version < the one set above
+  // is executed. It allows you to change your API while staying backwards
+  // compatible and gracefully handling data migration in a lossless way.
+  //
+  // In this example we transform an old "createUser" mutation with version 1
+  // into a "registerMember" mutation with version 2.
+  //
+  // transform is called as many times as required until a mutation with the
+  // current version number is returned
+  transform(m, targetVersion){
+    switch(m.name){
+      case 'createUser':
+        switch(m.version){
+          case 1: return {
+            name: 'registerMember',
+            args: [{
+              id: m.args[0],
+              username: m.args[1],
+              password: pgcrypto.crypt(m.args[2])
+            }],
+            version: 2
+          }
+        }
+    }
+    return Object.assign(m, {version: targetVersion})
+  },
 
 });

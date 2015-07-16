@@ -38,3 +38,11 @@ $$ LANGUAGE "plv8";
 CREATE OR REPLACE FUNCTION arla_register(vals json) RETURNS json AS $$
 	return JSON.stringify(plv8.arla.register(vals));
 $$ LANGUAGE "plv8";
+
+-- fetch the user config
+CREATE OR REPLACE FUNCTION arla_info() RETURNS json AS $$
+	return JSON.stringify({
+		version: plv8.arla.cfg.version,
+		mutations: Object.keys(plv8.arla.cfg.actions)
+	});
+$$ LANGUAGE "plv8";

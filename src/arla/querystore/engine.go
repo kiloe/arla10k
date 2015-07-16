@@ -18,6 +18,7 @@ type Engine interface {
 	GetLogLevel() logLevel
 	Authenticate(string) (schema.Token, error)
 	Register(string) (*schema.Mutation, error)
+	Info() (*schema.Info, error)
 }
 
 // Config defines options configuring the query engine

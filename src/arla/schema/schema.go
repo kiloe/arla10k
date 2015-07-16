@@ -10,11 +10,12 @@ import (
 // (which is a UUID v1 - therefore also has a rough timestamp encoded). Each
 // mutation also contains the ID of the user/account that submitted the mutation.
 type Mutation struct {
-	ID     UUID          `json:"id,omitempty"`
-	Token  Token         `json:"token,omitempty"`
-	Name   string        `json:"name,omitempty"`
-	Args   []interface{} `json:"args,omitempty"`
-	Status string        `json:"status,omitempty"`
+	ID      UUID          `json:"id,omitempty"`
+	Version int           `json:"version,omitempty"`
+	Token   Token         `json:"token,omitempty"`
+	Name    string        `json:"name,omitempty"`
+	Args    []interface{} `json:"args,omitempty"`
+	Status  string        `json:"status,omitempty"`
 }
 
 // Query is the request format for AQL queries with arguments
@@ -44,4 +45,10 @@ type SafeError interface {
 type Service interface {
 	http.Handler
 	Serve(r *http.Request) (io.Reader, SafeError)
+}
+
+// Info is the response of arla_info
+type Info struct {
+	Version   int      `json:"version"`
+	Mutations []string `json:"mutations"`
 }

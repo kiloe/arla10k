@@ -555,33 +555,58 @@ class MutationError extends Error {
 	};
 
 	arla.replay = function(m){
-		arla.exec(m);
+		arla.exec(m, true);
 		return true;
 	};
 
-	arla.exec = function({name, args, token}){
-    if( !name ){
+	arla.exec = function(m, replay){
+    if( !m.name ){
       throw new UserError("invalid action name");
     }
-    if( !args ){
-      args = [];
+    if( !m.args ){
+      m.args = [];
     }
-		var fn = actions[name];
+    if( !m.version ){
+      throw new MutationError({
+        message: "cannot exec mutation without version",
+        mutation: m
+      })
+    }
+    // if mutation is for an older version
+    // ask the transform function to update it
+    let iter = 0;
+    while( m.version < arla.cfg.version ){
+      // catch infinite recursion (ok 1000 isn't really infinite but if you
+      // have 1000 versions you have bigger problems.)
+      if( iter > 1000 ){
+        throw new Error("transform function appears to be causing infitie recursion");
+      }
+      if( !arla.cfg.transform ){
+        throw new MutationError({
+          message: `mutation requires transforming from version ${m.version} to ${arla.cfg.version} but no transform function was defined`,
+          mutation: m
+        })
+      }
+      console.debug(`transforming ${m.name} from version ${m.version} to ${arla.cfg.version}...`);
+      m = arla.cfg.transform(m, arla.cfg.version);
+      iter++;
+    }
+		var fn = actions[m.name];
 		if( !fn ){
-			if( /^[a-zA-Z0-9_]+$/.test(name) ){
-				throw new UserError(`no such action ${name}`);
+			if( /^[a-zA-Z0-9_]+$/.test(m.name) ){
+				throw new UserError(`no such action ${m.name}`);
 			} else {
 				throw new UserError('invalid action name');
 			}
 		}
 		// exec the mutation func
-		console.debug(`action ${name} args:`, args, "session:", token);
-		var queryArgs = fn.apply({session:token}, args);
+		console.debug(`action ${m.name} args:`, m.args, "session:", m.token);
+		var queryArgs = fn.apply({session:m.token,replay:replay}, m.args);
 		if( !queryArgs ){
-			console.debug(`action ${name} was a noop`);
+			console.debug(`action ${m.name} was a noop`);
 			return [];
 		}
-		console.debug(`action ${name} returned`, queryArgs);
+		console.debug(`action ${m.name} returned`, queryArgs);
 		if( !Array.isArray(queryArgs) ){
 			queryArgs = [queryArgs];
 		}
@@ -603,11 +628,7 @@ class MutationError extends Error {
 			}
 			throw new MutationError({
         message: e.message.replace('UserError: ', ''),
-        mutation: {
-          name: name,
-          args:args,
-          token:token
-        }
+        mutation: m
       })
 		}
 	};
@@ -674,25 +695,25 @@ class MutationError extends Error {
 		if( arla.cfg ){
 			throw new Error('configure should only be called ONCE!');
 		}
+		arla.cfg = cfg;
 		// setup user schema
 		Object.keys(cfg.schema || {}).forEach(function(name){
 			define(name, cfg.schema[name]);
 		});
 		// setup user actions
-		let actionNames = Object.keys(cfg.actions || {})
-		actionNames.forEach(function(name){
+		Object.keys(cfg.actions || {}).forEach(function(name){
 			action(name, cfg.actions[name]);
 		});
-		cfg.actions = actionNames;
-		// store cfg for later
-		arla.cfg = cfg;
 		// validate some cfg options
-		if( !arla.cfg.authenticate ){
+		if( !cfg.authenticate ){
 			throw new Error('missing required "authenticate" function');
 		}
-		if( !arla.cfg.register ){
+		if( !cfg.register ){
 			throw new Error('missing required "register" function');
 		}
+    if( !cfg.version ){
+      cfg.version = 1;
+    }
 	}
 
 })();
