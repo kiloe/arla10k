@@ -579,7 +579,7 @@ class MutationError extends Error {
       // catch infinite recursion (ok 1000 isn't really infinite but if you
       // have 1000 versions you have bigger problems.)
       if( iter > 1000 ){
-        throw new Error("transform function appears to be causing infitie recursion");
+        throw new UserError("transform function appears to be causing infitie recursion");
       }
       if( !arla.cfg.transform ){
         throw new MutationError({
@@ -612,7 +612,7 @@ class MutationError extends Error {
 		}
 		// ensure first arg is valid
 		if( typeof queryArgs[0] != 'string' ){
-			throw new Error('invalid response from action. should be: [sqlstring, ...args]');
+			throw new UserError('invalid response from action. should be: [sqlstring, ...args]');
 		}
 		// run the query returned from the mutation func
 		try{
@@ -674,7 +674,7 @@ class MutationError extends Error {
 	arla.authenticate = function(values){
 		var res = db.query.apply(db, arla.cfg.authenticate(values));
 		if( res.length < 1 ){
-			throw new Error('invalid credentials');
+			throw new UserError('invalid credentials');
 		}
 		return res[0];
 	}
