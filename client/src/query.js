@@ -6,6 +6,12 @@ export class Query extends EventEmitter {
     super();
     this.client = client;
     this.builder = builder;
+    this.pollInterval = 30000;
+    this.on('error', function(err){
+      if( EventEmitter.listenerCount(this, 'error') < 2 ){
+        console.error(err);
+      }
+    });
   }
 
   // run executes the query exactly once.
@@ -19,6 +25,45 @@ export class Query extends EventEmitter {
       this.emit('error', ex);
       return Promise.reject(ex);
     });
+  }
+
+  // poll executes run() continuously in intervals of ms
+  // until stop() is called;
+  // returns the Query for chaining
+  poll(ms){
+    this._poll(ms);
+    return this;
+  }
+
+  // _poll executes run() continuously in intervals of ms
+  // until stop() is called;
+  _poll(ms){
+    if( !ms ){
+      ms = this.pollInterval;
+    }
+    if( this.polling ){
+      throw new Error('query is already polling');
+    }
+    this.polling = this.run().catch( () => null).then( () => {
+      if( !this.polling ){
+        return;
+      }
+      return new Promise( (resolve, reject) => {
+        setTimeout( () => {
+          this.polling = false;
+          resolve(this._poll(ms))
+        }, ms);
+      })
+    })
+    return this.polling;
+  }
+
+  // stop halts the query polling.
+  // returns a promise that resolves when no more requests are active.
+  stop(){
+    let last = this.polling;
+    this.polling = false;
+    return last ? last.then( () => true ) : Promise.resolve(true);
   }
 
   // getQuery converts the builder into args suitable for Client#query

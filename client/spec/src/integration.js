@@ -29,6 +29,7 @@ describe('client', function(){
       client = createClient(cfg)
         .on('authenticated', onAuthenticated)
         .on('unauthenticated', onUnauthenticated)
+        .on('error', function(){});
     })
 
     describe('without credentials', function(){
@@ -101,13 +102,11 @@ describe('client', function(){
 
   describe('query', function(){
     let client;
-    let onError;
 
     beforeEach(function(done){
-      onError = jasmine.createSpy('onError');
       client = createClient(cfg)
         .on('authenticated', done)
-        .on('error', onError)
+        .on('error', function(){})
         .connect(bob);
     })
 
@@ -227,6 +226,20 @@ describe('client', function(){
         expect(queryBuilder.calls.count()).toEqual(2);
         done();
       });
+    })
+
+    it('should automatically refresh data via poll()', function(done){
+      let query;
+      let i = 0;
+      let counter = function(){
+        i++;
+        if( i > 3 ){
+            query.stop().then(done);
+        }
+      }
+      query = client.prepare(`me(){username}`)
+        .on('data', counter)
+        .poll(10);
     })
 
   })
