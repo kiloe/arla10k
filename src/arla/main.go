@@ -171,7 +171,7 @@ func (s *Server) registrationHandler(w http.ResponseWriter, r *http.Request) *Er
 	if err != nil {
 		return userError(err)
 	}
-	// ask queryengine for transformation
+	// ask queryengine to register new user
 	m, err := s.qs.Register(string(b))
 	if err != nil {
 		return userError(err)
@@ -279,7 +279,10 @@ func (s *Server) wrapHandler(fn HandlerFunc) http.HandlerFunc {
 		// call handler
 		if err := fn(w, r); err != nil {
 			// handle errors
-			//fmt.Println(err)
+			if s.cfg.Debug {
+				log.Println("DEBUG:", err.Error())
+			}
+			fmt.Println(err)
 			w.WriteHeader(err.code)
 			enc := json.NewEncoder(w)
 			if fatal := enc.Encode(err); fatal != nil {
