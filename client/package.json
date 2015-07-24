@@ -1,0 +1,27 @@
+{
+  "name": "arla-client",
+  "version": "0.0.3",
+  "description": "client library for querying an Arla datastore",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "npm run compile && jasmine --stop-on-failure",
+    "compile": "npm run compile-tests && npm run compile-src",
+    "compile-tests": "babel --source-maps inline -d spec/dist spec/src",
+    "compile-src": "babel --source-maps inline -d dist/ src/",
+    "prepublish": "npm run compile"
+  },
+  "keywords": [
+    "arla"
+  ],
+  "author": "Chris Farmiloe <chrisfarms@gmail.com> (http://chris.farmiloe.com/)",
+  "license": "MIT",
+  "devDependencies": {
+    "babel": "^5.8.3",
+    "jasmine": "^2.3.1",
+    "source-map-support": "^0.3.2"
+  },
+  "dependencies": {
+    "events": "^1.0.2",
+    "isomorphic-fetch": "^2.1.1"
+  }
+}

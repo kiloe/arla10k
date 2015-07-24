@@ -22,6 +22,7 @@ GO := $(RUN) --entrypoint /usr/bin/go -e GOPATH=/app -e CGO_ENABLED=0 $(BASE)
 DELETE := $(RUN) --entrypoint /bin/rm $(BASE)
 BROWSERIFY := $(RUN) --entrypoint /usr/local/bin/browserify $(BASE)
 PEGJS := $(RUN) --entrypoint /usr/local/bin/pegjs $(BASE)
+10K :=
 
 build: bin/arla
 	docker build -t $(IMAGE) .
@@ -53,12 +54,27 @@ clean:
 	rm -f src/arla/querystore/postgres_init.go
 	rm -f $(SQL)/02_js.sql
 	rm -f $(JS)/graphql.js
+	rm -rf client/spec/dist
+	rm -rf client/dist
 	#$(DELETE) -rf src/code.google.com/ src/github.com/ src/golang.org/
+	docker rm -f 10k 2>/dev/null || true
 	docker rmi -f $(IMAGE) 2>/dev/null || true
+
+test-client: build
+	docker rm -f 10k 2>/dev/null || true
+	docker run -d --name 10k -i \
+		-p 3000:80 \
+		-v $(PWD)/test-app:/app \
+		-w /app \
+		-v $(PWD)/$(CONF):/etc/postgresql/9.4/main \
+		$(IMAGE) \
+			--secret=testing \
+			--debug
+	(cd client && npm test) || (docker logs 10k && false)
 
 
 test: all
 	$(GO) get -t arla
 	$(GO) test -v arla
 
-.PHONY: default build test release clean
+.PHONY: default build test test-client release clean
