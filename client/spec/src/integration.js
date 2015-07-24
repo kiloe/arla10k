@@ -44,7 +44,7 @@ describe('client', function(){
         expect(onAuthenticated).toHaveBeenCalled();
         done();
       }).catch(function(err){
-        done.fail(`failed to register: ${err.error || err}`)
+        done.fail(err.error || err)
       });
     });
 
@@ -53,7 +53,7 @@ describe('client', function(){
         expect(onUnauthenticated).toHaveBeenCalled();
         done();
       }).catch(function(err){
-        done.fail(`failed to authenticate: ${err.error || err}`)
+        done.fail(err.error || err)
       });
     });
   })
@@ -85,7 +85,41 @@ describe('client', function(){
         })
         done();
       }).catch(function(err){
-        done.fail(`query failed: ${err.error || err}`)
+        done.fail(err.error || err)
+      });
+    });
+
+    it('should be able to exec addEmailAddress mutation for bob', function(done){
+      client.exec("addEmailAddress", "bob@bob.com").then(function(ok){
+        expect(ok).toBe(true);
+        done();
+      }).catch(function(err){
+        done.fail(err.error || err)
+      });
+    })
+
+    it('should NOT be able to exec addEmailAddress mutation for bob (already exists)', function(done){
+      client.exec("addEmailAddress", "bob@bob.com").then(function(ok){
+        expect(ok).not.toBe(true);
+        done.fail('expected addEmailAddress to fail (on this attempt)');
+      }).catch(function(err){
+        done();
+      });
+    })
+
+    it('should be able to fetch email address', function(done){
+      client.query(`
+        me(){
+          email:
+          email_addresses.pluck(addr).first()
+        }
+      `).then(function(data){
+        expect(data).toEqual({
+          me: {email: 'bob@bob.com'}
+        })
+        done();
+      }).catch(function(err){
+        done.fail(err.error || err)
       });
     });
   })
