@@ -1,4 +1,5 @@
 import {EventEmitter} from 'events';
+import {Query} from './query';
 
 // polyfills
 import 'babelify/polyfill';
@@ -32,14 +33,9 @@ const AUTHENTICATED = 'authenticated';
 // Client is a connection to arla.
 export class Client extends EventEmitter {
 
-  constructor({ url = '/', token = null }){
+  constructor({ url = '/' }){
     super();
-    // let _emit = this.emit;
-    // this.emit = (...args) => {
-    //   setTimeout(_emit.bind(this, ...args),0)
-    // }
     this.url = absurl(url);
-    this.token = token;
     this.on('error', function(err){
       if( EventEmitter.listenerCount(this, 'error') < 2 ){
         log(err);
@@ -47,25 +43,71 @@ export class Client extends EventEmitter {
     });
   }
 
+  // connect sets up the authentication details for future
+  // requests with the client. after connect is called either
+  // an 'authenticated' or 'unauthenticated' event will be emitted.
   connect(credentials){
-    if( credentials ){
-      this.authenticate(credentials);
-    } else {
-      this.setToken(this.token);
+    // connect without args starts unauthenticated
+    if( !credentials ){
+      this._setToken(null);
+      return this;
     }
+    // connect with a string arg sets the token and starts authenticated
+    if( typeof credentials == 'string'){ // is a token
+      this._setToken(credentials);
+      return this;
+    }
+    // any other type of arg is assumed to be login details
+    this.authenticate(credentials);
     return this;
   }
 
+  // disconnect clears the cached info, cancels any active queries
+  // and deauthenticates the current user.
   disconnect(){
     this.info = null;
+    this.deauthenticate();
+    return this;
   }
 
+  // register sends a registration request to the server and returns a
+  // promise.
+  register(values){
+    return this._post('register', values)
+      .then(res => this.authenticate(values))
+  }
+
+  // query sends a query request to the server and returns a promise
+  query(q, ...args){
+    return this._post('query', {
+      query: q,
+      args: args
+    }).then( res => res.data )
+  }
+
+  // exec sends an exec request to the server and returns a promise
+  exec(name, ...args){
+    return this._post('exec', {
+      name: name,
+      args: args
+    }).then( res => !!res.data.success)
+  }
+
+  // prepare creates a prepared Query.
+  // a Query can be executed mutliple times, has the ability to
+  // regenerate it's AQL via a builder function and has methods to
+  // make polling/refreshing queries easier.
+  prepare(...args){
+    return new Query({client: this, builder: args});
+  }
+
+
   // configure continuously polls for /info until it gets a response.
-  configure(){
+  _configure(){
     if( this.info ){
       return Promise.resolve(this.info);
     }
-    return this._post('info').then(res => {
+    return this._req('get', 'info').then(res => {
       this.info = res.data;
       return this.info
     }).catch(ex => {
@@ -73,7 +115,7 @@ export class Client extends EventEmitter {
       this.emit('error', {error: 'connection failure... retrying', reason: ex});
       return new Promise( (resolve) => {
         setTimeout( () => {
-          resolve(this.configure())
+          resolve(this._configure())
         }, 1000)
       })
     })
@@ -81,18 +123,20 @@ export class Client extends EventEmitter {
 
   // authenticate
   authenticate(values){
-    return this.post('authenticate', values)
-      .then(this.maybeAuthenticate.bind(this))
+    return this._post('authenticate', values)
+      .then(res => res.data.access_token)
+      .catch(ex => null)
+      .then(token => this._setToken(token))
   }
 
   // deauthenticate removes the token and disables the client
   // until authentication.
   deauthenticate(){
-    this.setToken(null);
+    this._setToken(null);
   }
 
   // setToken assigns an authentication token and triggers an event
-  setToken(token){
+  _setToken(token){
     this.token = token;
     if( this.token ){
       this.emit(AUTHENTICATED);
@@ -101,40 +145,17 @@ export class Client extends EventEmitter {
     }
   }
 
-  // register sends a registration request to the server and returns a
-  // promise.
-  register(values){
-    return this.post('register', values)
-      .then(this.maybeAuthenticate.bind(this));
-  }
-
-  // query sends a query request to the server and returns a promise
-  query(q, ...args){
-    return this.post('query', {
-      query: q,
-      args: args
-    }).then( res => res.data )
-  }
-
-  // exec sends an exec request to the server and returns a promise
-  exec(name, ...args){
-    return this.post('exec', {
-      name: name,
-      args: args
-    }).then( res => !!res.data.success)
-  }
-
   // post returns a Promise for an API request.
   // The promise will either return the data or a rejection.
-  post(...args){
-    return this.configure().then( info => {
-      return this._post(...args)
+  _post(...args){
+    return this._configure().then( info => {
+      return this._req('post', ...args)
     })
   }
 
-  _post(url, values){
+  _req(method, url, values){
     let opts = {
-      method: 'post',
+      method: method || 'post',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
@@ -147,14 +168,14 @@ export class Client extends EventEmitter {
       opts.body = JSON.stringify(values);
     }
     return fetch(`${this.url}${url}`, opts)
-      .then(this.normalizeResponse.bind(this))
-      .then(this.maybeDeauthenticate.bind(this))
-      .then(this.maybeReject.bind(this));
+      .then(this._normalizeResponse.bind(this))
+      .then(this._maybeDeauthenticate.bind(this))
+      .then(this._maybeReject.bind(this));
   }
 
   // normalizeResponse converts any non-json response to a json error
   // Parses the JSON response and places it either in res.error or res.data.
-  normalizeResponse(res){
+  _normalizeResponse(res){
     let ct = res.headers.get('Content-Type');
     if( ct != 'application/json' ){
       return res.text().then( txt => {
@@ -180,25 +201,16 @@ export class Client extends EventEmitter {
 
   // maybeDeauthenticate checks for 403 responses and triggers
   // the client to deauth before passing on the response unchanged
-  maybeDeauthenticate(res){
+  _maybeDeauthenticate(res){
     if( res.status == 403 ){
       this.deauthenticate();
     }
     return res;
   }
 
-  // maybeAuthenticate checks the data for an access_token and
-  // triggers the client to store it before returning the response unchange
-  maybeAuthenticate(res){
-    if( res.data && res.data.access_token ){
-      this.setToken(res.data.access_token);
-    }
-    return res;
-  }
-
   // maybeReject converts error responses to rejections or returns
   // the response unchanged
-  maybeReject(res){
+  _maybeReject(res){
     if( res.error ){
       this.emit('error', res.error);
       return Promise.reject(res.error);

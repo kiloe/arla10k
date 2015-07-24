@@ -12,6 +12,12 @@ describe('client', function(){
     password:'bobzpasswerd'
   };
 
+  var alice = {
+    id:'c47ebce0-1e31-45be-9b84-aad235409305',
+    username:'alice',
+    password:'ali&&&%%£__-'
+  };
+
   describe('authentication', function(){
     let client;
     let onAuthenticated;
@@ -23,48 +29,75 @@ describe('client', function(){
       client = createClient(cfg)
         .on('authenticated', onAuthenticated)
         .on('unauthenticated', onUnauthenticated)
-        .connect();
     })
 
-    it('should emit unauthenticated imediately when created without token', function(){
-      expect(onUnauthenticated).toHaveBeenCalled();
-    });
+    describe('without credentials', function(){
 
-    it('should emit unauthenticated after failed login', function(done){
-      client.authenticate(bob).then(function(){
-        done.fail(`expected authenticated to fail since user should not exist`);
-      }).catch(function(err){
+      beforeEach(function(done){
+        client
+          .on('unauthenticated', done)
+          .connect();
+      })
+
+      it('should emit unauthenticated imediately', function(){
         expect(onUnauthenticated).toHaveBeenCalled();
-        done();
       });
+
     });
 
-    it('should emit authenticated after registration', function(done){
-      client.register(bob).then(function(){
+    describe('with credentials', function(){
+
+      beforeEach(function(done){
+        client
+          .on('unauthenticated', done)
+          .on('authenticated', done)
+          .connect(bob);
+      })
+
+      it('should emit unauthenticated after failed login', function(){
+        expect(onUnauthenticated).toHaveBeenCalled();
+      });
+
+      it('should emit authenticated after registration (for alice)', function(done){
+        client.register(alice).then(function(){
+          expect(onAuthenticated).toHaveBeenCalled();
+          done();
+        }).catch(function(err){
+          done.fail(err.error || err)
+        });
+      });
+
+      it('should emit authenticated after registration (for bob)', function(done){
+        client.register(bob).then(function(){
+          expect(onAuthenticated).toHaveBeenCalled();
+          done();
+        }).catch(function(err){
+          done.fail(err.error || err)
+        });
+      });
+
+      it('should emit authenticated after successful connect', function(){
         expect(onAuthenticated).toHaveBeenCalled();
-        done();
-      }).catch(function(err){
-        done.fail(err.error || err)
       });
-    });
 
-    it('should emit authenticated after login', function(done){
-      client.authenticate(bob).then(function(){
-        expect(onUnauthenticated).toHaveBeenCalled();
-        done();
-      }).catch(function(err){
-        done.fail(err.error || err)
+    })
+
+    describe('with token', function(){
+
+      beforeEach(function(done){
+        client
+          .on('authenticated', done)
+          .connect('abc123');
+      })
+
+      it('should emit authenticated imediately', function(){
+        expect(onAuthenticated).toHaveBeenCalled();
       });
-    });
+
+    })
+
   })
 
-  describe('with stored token', function(){
-    it('should emit authenticated immediately', function(done){
-      createClient({token: 'abc123'})
-        .on('authenticated', done)
-        .connect();
-    });
-  });
 
   describe('query', function(){
     let client;
@@ -124,6 +157,78 @@ describe('client', function(){
     });
   })
 
+  describe('prepare', function(){
+    let client;
+    let onError;
 
+    beforeEach(function(done){
+      onError = jasmine.createSpy('onError');
+      client = createClient(cfg)
+        .on('authenticated', done)
+        .on('error', onError)
+        .connect(bob);
+      expect(onError).not.toHaveBeenCalled();
+    })
+
+    it('should create a Query using a simple string', function(done){
+      client.prepare(`members(){username}`)
+        .on('data', function(data){
+          expect(data).toEqual({
+            members: [{username: "alice"},{username: "bob"}]
+          })
+          done();
+        })
+        .on('error', function(err){
+          done.fail(err.error || err)
+        })
+        .run();
+    })
+
+    it('should create a Query using a simple string + args', function(done){
+      client.prepare([`members().filter(id = $1){username}`,alice.id])
+        .on('data', function(data){
+          expect(data).toEqual({
+            members: [{username: "alice"}]
+          })
+          done();
+        })
+        .on('error', function(err){
+          done.fail(err.error || err)
+        })
+        .run();
+    })
+
+    it('should build query with a func', function(done){
+      let queryBuilder = function(){
+        return `members(){username}`
+      };
+      client.prepare(queryBuilder)
+        .on('data', function(data){
+          expect(data).toEqual({
+            members: [{username: "alice"},{username: "bob"}]
+          })
+          done();
+        })
+        .on('error', function(err){
+          done.fail(err.error || err)
+        })
+        .run();
+    })
+
+    it('should call builder before each run()', function(done){
+      let queryBuilder = jasmine.createSpy('builder', function(){
+        return `me(){username}`;
+      }).and.callThrough();
+      let query = client.prepare(queryBuilder);
+      let qs = [];
+      qs.push(query.run());
+      qs.push(query.run());
+      Promise.all(qs).then(function(){
+        expect(queryBuilder.calls.count()).toEqual(2);
+        done();
+      });
+    })
+
+  })
 
 });
