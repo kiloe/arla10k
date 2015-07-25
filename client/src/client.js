@@ -36,11 +36,18 @@ export class Client extends EventEmitter {
   constructor({ url = '/' }){
     super();
     this.url = absurl(url);
+    this.state = UNAUTHENTICATED;
     this.on('error', function(err){
       if( EventEmitter.listenerCount(this, 'error') < 2 ){
         log(err);
       }
     });
+    this.on(AUTHENTICATED, e => {
+      this._setState(AUTHENTICATED)
+    })
+    this.on(UNAUTHENTICATED, e => {
+      this._setState(UNAUTHENTICATED);
+    })
   }
 
   // connect sets up the authentication details for future
@@ -79,10 +86,14 @@ export class Client extends EventEmitter {
 
   // query sends a query request to the server and returns a promise
   query(q, ...args){
+    return this._query(q, args);
+  }
+
+  _query(q, args, opts = {}){
     return this._post('query', {
       query: q,
       args: args
-    }).then( res => res.data )
+    },opts).then( res => res.data )
   }
 
   // exec sends an exec request to the server and returns a promise
@@ -126,7 +137,7 @@ export class Client extends EventEmitter {
     return this._post('authenticate', values)
       .then(res => res.data.access_token)
       .catch(ex => null)
-      .then(token => this._setToken(token))
+      .then(token => this._setToken(token));
   }
 
   // deauthenticate removes the token and disables the client
@@ -143,34 +154,54 @@ export class Client extends EventEmitter {
     } else {
       this.emit(UNAUTHENTICATED);
     }
+    return token;
+  }
+
+  // setState assign the current state
+  // if new state differs from old state a 'change' event is emitted
+  // with the new state
+  _setState(state){
+    let old = this.state;
+    this.state = state;
+    if( old != state ){
+      this.emit('change', state);
+    }
+    return state;
   }
 
   // post returns a Promise for an API request.
   // The promise will either return the data or a rejection.
-  _post(...args){
+  _post(url, values, opts = {}){
+    Object.assign(opts, {token: this.token});
     return this._configure().then( info => {
-      return this._req('post', ...args)
+      return this._req('post', url, values, opts)
     })
   }
 
-  _req(method, url, values){
-    let opts = {
+  _req(method, url, values, opts){
+    if( !opts ){
+      opts = {};
+    }
+    let req = {
       method: method || 'post',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
       }
     }
-    if( this.token ){
-      opts.headers['Authorization'] = `bearer ${this.token}`;
+    if( opts.token ){
+      req.headers['Authorization'] = `bearer ${opts.token}`;
     }
     if( values ){
-      opts.body = JSON.stringify(values);
+      req.body = JSON.stringify(values);
     }
-    return fetch(`${this.url}${url}`, opts)
+    if( !opts.emitter ){
+      opts.emitter = this;
+    }
+    return fetch(`${this.url}${url}`, req)
       .then(this._normalizeResponse.bind(this))
       .then(this._maybeDeauthenticate.bind(this))
-      .then(this._maybeReject.bind(this));
+      .then(this._maybeReject.bind(this, opts.emitter));
   }
 
   // normalizeResponse converts any non-json response to a json error
@@ -210,10 +241,11 @@ export class Client extends EventEmitter {
 
   // maybeReject converts error responses to rejections or returns
   // the response unchanged
-  _maybeReject(res){
+  _maybeReject(emitter, res){
     if( res.error ){
-      this.emit('error', res.error);
-      return Promise.reject(res.error);
+      let err = res.error.error || res.error;
+      emitter.emit('error', err);
+      return Promise.reject(err);
     }
     return res;
   }

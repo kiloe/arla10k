@@ -7,23 +7,18 @@ export class Query extends EventEmitter {
     this.client = client;
     this.builder = builder;
     this.pollInterval = 30000;
-    this.on('error', function(err){
-      if( EventEmitter.listenerCount(this, 'error') < 2 ){
-        console.error(err);
-      }
-    });
+    // silence unhandled query errors as the client
+    // will have them logged anyway
+    this.on('error', function(err){});
   }
 
   // run executes the query exactly once.
   // returns a promise with the query data
   run(){
-    let args = this._getQuery();
-    return this.client.query(...args).then(data => {
+    let [q, ...args] = this._getQuery();
+    return this.client._query(q, args, {emitter: this}).then(data => {
       this.emit('data', data);
       return data;
-    }).catch(ex => {
-      this.emit('error', ex);
-      return Promise.reject(ex);
     });
   }
 
@@ -37,6 +32,7 @@ export class Query extends EventEmitter {
 
   // _poll executes run() continuously in intervals of ms
   // until stop() is called;
+  // Returns a Promise
   _poll(ms){
     if( !ms ){
       ms = this.pollInterval;
@@ -44,18 +40,29 @@ export class Query extends EventEmitter {
     if( this.polling ){
       throw new Error('query is already polling');
     }
-    this.polling = this.run().catch( () => null).then( () => {
-      if( !this.polling ){
-        return;
-      }
-      return new Promise( (resolve, reject) => {
-        setTimeout( () => {
-          this.polling = false;
-          resolve(this._poll(ms))
-        }, ms);
+    if( this.client.state != 'authenticated' ){
+      this.polling = this._pollLater(ms);
+    } else {
+      this.polling = this.run().catch( ex => true ).then( () => {
+        if( !this.polling ){
+          return true;
+        }
+        return this._pollLater(ms);
       })
-    })
+    }
     return this.polling;
+  }
+
+  _pollLater(ms){
+    return new Promise( (resolve, reject) => {
+      setTimeout( () => {
+        if( !this.polling ){
+          return resolve(true);
+        }
+        this.polling = false;
+        return resolve(this._poll(ms))
+      }, ms);
+    })
   }
 
   // stop halts the query polling.

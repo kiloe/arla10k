@@ -63,18 +63,14 @@ describe('client', function(){
         client.register(alice).then(function(){
           expect(onAuthenticated).toHaveBeenCalled();
           done();
-        }).catch(function(err){
-          done.fail(err.error || err)
-        });
+        }).catch(done.fail);
       });
 
       it('should emit authenticated after registration (for bob)', function(done){
         client.register(bob).then(function(){
           expect(onAuthenticated).toHaveBeenCalled();
           done();
-        }).catch(function(err){
-          done.fail(err.error || err)
-        });
+        }).catch(done.fail);
       });
 
       it('should emit authenticated after successful connect', function(){
@@ -116,18 +112,14 @@ describe('client', function(){
           me: {username: 'bob'}
         })
         done();
-      }).catch(function(err){
-        done.fail(err.error || err)
-      });
+      }).catch(done.fail);
     });
 
     it('should be able to exec addEmailAddress mutation for bob', function(done){
       client.exec("addEmailAddress", "bob@bob.com").then(function(ok){
         expect(ok).toBe(true);
         done();
-      }).catch(function(err){
-        done.fail(err.error || err)
-      });
+      }).catch(done.fail);
     })
 
     it('should NOT be able to exec addEmailAddress mutation for bob (already exists)', function(done){
@@ -150,9 +142,7 @@ describe('client', function(){
           me: {email: 'bob@bob.com'}
         })
         done();
-      }).catch(function(err){
-        done.fail(err.error || err)
-      });
+      }).catch(done.fail);
     });
   })
 
@@ -177,9 +167,7 @@ describe('client', function(){
           })
           done();
         })
-        .on('error', function(err){
-          done.fail(err.error || err)
-        })
+        .on('error', done.fail)
         .run();
     })
 
@@ -191,9 +179,7 @@ describe('client', function(){
           })
           done();
         })
-        .on('error', function(err){
-          done.fail(err.error || err)
-        })
+        .on('error', done.fail)
         .run();
     })
 
@@ -208,9 +194,7 @@ describe('client', function(){
           })
           done();
         })
-        .on('error', function(err){
-          done.fail(err.error || err)
-        })
+        .on('error', done.fail)
         .run();
     })
 
@@ -228,18 +212,64 @@ describe('client', function(){
       });
     })
 
-    it('should automatically refresh data via poll()', function(done){
-      let query;
-      let i = 0;
-      let counter = function(){
+  })
+
+  describe('query polling', function(){
+    let client;
+    let query;
+    let i;
+    let ql = `me(){username}`;
+
+    let doneAfterCalled = function(n, done){
+      return function(data){
+        expect(data).toEqual({me: {username: "bob"}});
         i++;
-        if( i > 3 ){
+        if( i == n ){
             query.stop().then(done);
         }
+        if( i > n ){
+          done.fail('doneAfterCalled called '+i+' times (expected '+n+')');
+        }
       }
-      query = client.prepare(`me(){username}`)
-        .on('data', counter)
+    }
+
+    beforeEach(function(){
+      i = 0;
+      client = createClient(cfg);
+    })
+
+    it('should periodically fetch data', function(done){
+      query = client.on('error', done.fail).connect(bob)
+        .prepare(ql)
+        .on('data', doneAfterCalled(3, done))
+        .on('error', done.fail)
         .poll(10);
+    })
+
+    it('should only start after authenticated', function(done){
+      query = client.on('error', done.fail)
+        .prepare(ql)
+        .on('data', doneAfterCalled(3, done))
+        .on('error', done.fail)
+        .poll(10);
+      setTimeout(function(){
+        expect(i).toEqual(0);
+        client.connect(bob);
+      },10);
+    })
+
+    it('should pause if becomes unauthenticated', function(done){
+      query = client.connect(bob)
+        .prepare(ql)
+        .on('data', doneAfterCalled(10, done))
+        .on('error', done.fail)
+        .poll(10);
+      setTimeout(function(){
+        client.deauthenticate();
+      },10);
+      setTimeout(function(){
+        client.authenticate(bob);
+      },30);
     })
 
   })
