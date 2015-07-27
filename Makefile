@@ -72,6 +72,7 @@ test-client: build
 			--secret=testing \
 			--debug
 	(cd client && npm test) || (docker logs 10k &> client-test.log && false)
+	docker rm -f 10k 2>/dev/null || true
 
 
 test-server: all

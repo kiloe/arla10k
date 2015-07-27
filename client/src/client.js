@@ -35,6 +35,7 @@ export class Client extends EventEmitter {
 
   constructor({ url = '/' }){
     super();
+    this.queries = [];
     this.url = absurl(url);
     this.state = UNAUTHENTICATED;
     this.on('error', function(err){
@@ -74,6 +75,9 @@ export class Client extends EventEmitter {
   disconnect(){
     this.info = null;
     this.deauthenticate();
+    this.queries.forEach(q => {
+      q.stop();
+    })
     return this;
   }
 
@@ -109,9 +113,20 @@ export class Client extends EventEmitter {
   // regenerate it's AQL via a builder function and has methods to
   // make polling/refreshing queries easier.
   prepare(...args){
-    return new Query({client: this, builder: args});
+    let q = new Query({client: this, builder: args});
+    this.queries.push(q);
+    return q;
   }
 
+  // refresh calls run on any prepared queries.
+  refresh(){
+    if( this.state != 'authenticated' ){
+      return
+    }
+    this.queries.forEach(q => {
+      q.run();
+    })
+  }
 
   // configure continuously polls for /info until it gets a response.
   _configure(){
@@ -120,6 +135,15 @@ export class Client extends EventEmitter {
     }
     return this._req('get', 'info').then(res => {
       this.info = res.data;
+      // add each mutation action as a function on the client
+      res.data.mutations.forEach(name => {
+        this[name] = (...args) => {
+          return this.exec(name, ...args).then( ok => {
+            this.refresh();
+            return ok;
+          });
+        }
+      })
       return this.info
     }).catch(ex => {
       // If error return a promise to try again

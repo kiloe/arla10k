@@ -131,6 +131,13 @@ describe('client', function(){
       });
     })
 
+    it('should expose updateEmailAddress as a func on client', function(done){
+      client.updateEmailAddress("bob@bob.com", "bob@gmail.com").then(function(ok){
+        expect(ok).toBe(true);
+        done();
+      }).catch(done.fail);
+    })
+
     it('should be able to fetch email address', function(done){
       client.query(`
         me(){
@@ -139,7 +146,7 @@ describe('client', function(){
         }
       `).then(function(data){
         expect(data).toEqual({
-          me: {email: 'bob@bob.com'}
+          me: {email: 'bob@gmail.com'}
         })
         done();
       }).catch(done.fail);
@@ -210,6 +217,21 @@ describe('client', function(){
         expect(queryBuilder.calls.count()).toEqual(2);
         done();
       });
+    })
+
+    describe('refresh client', function(){
+
+      it('should cause query to fetch data', function(done){
+        let query = client.prepare(`members(){username}`)
+          .on('data', function(data){
+            expect(data).toEqual({
+              members: [{username: "alice"},{username: "bob"}]
+            })
+            done();
+          })
+          .on('error', done.fail);
+        client.refresh();
+      })
     })
 
   })
