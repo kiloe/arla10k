@@ -219,9 +219,9 @@ describe('client', function(){
       });
     })
 
-    describe('refresh client', function(){
+    describe('refresh', function(){
 
-      it('should cause query to fetch data', function(done){
+      it('should cause polling query to poll imeddiately', function(done){
         let query = client.prepare(`members(){username}`)
           .on('data', function(data){
             expect(data).toEqual({
@@ -229,7 +229,8 @@ describe('client', function(){
             })
             done();
           })
-          .on('error', done.fail);
+          .on('error', done.fail)
+          .poll(50000);
         client.refresh();
       })
     })

@@ -124,7 +124,9 @@ export class Client extends EventEmitter {
       return
     }
     this.queries.forEach(q => {
-      q.run();
+      if( q.polling ){
+        q.run();
+      }
     })
   }
 
@@ -175,6 +177,7 @@ export class Client extends EventEmitter {
     this.token = token;
     if( this.token ){
       this.emit(AUTHENTICATED);
+      this.refresh();
     } else {
       this.emit(UNAUTHENTICATED);
     }
