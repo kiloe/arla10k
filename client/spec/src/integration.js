@@ -1,4 +1,4 @@
-import {createClient} from '../../dist/client';
+import {createClient} from '../../dist';
 
 describe('client', function(){
 
