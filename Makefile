@@ -74,8 +74,10 @@ test-client: build
 	(cd client && npm test) || (docker logs 10k &> client-test.log && false)
 
 
-test: all
+test-server: all
 	$(GO) get -t arla
 	$(GO) test -v arla
 
-.PHONY: default build test test-client release clean
+test: test-server test-client
+
+.PHONY: default build test test-client test-server release clean

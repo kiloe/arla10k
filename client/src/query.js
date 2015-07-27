@@ -38,14 +38,14 @@ export class Query extends EventEmitter {
       ms = this.pollInterval;
     }
     if( this.polling ){
-      throw new Error('query is already polling');
+      return Promise.reject(Error('query is already polling'));
     }
     if( this.client.state != 'authenticated' ){
       this.polling = this._pollLater(ms);
     } else {
       this.polling = this.run().catch( ex => true ).then( () => {
         if( !this.polling ){
-          return true;
+          return;
         }
         return this._pollLater(ms);
       })
@@ -57,7 +57,7 @@ export class Query extends EventEmitter {
     return new Promise( (resolve, reject) => {
       setTimeout( () => {
         if( !this.polling ){
-          return resolve(true);
+          return resolve();
         }
         this.polling = false;
         return resolve(this._poll(ms))
