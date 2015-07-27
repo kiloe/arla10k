@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"errors"
 )
 
 import "github.com/jackc/pgx"
@@ -74,5 +75,15 @@ func authError(err error) *Error {
 		err:     err,
 		code:    http.StatusUnauthorized,
 		Message: "you are not authorized to perform this request",
+	}
+}
+
+// If a request is in the middle of being processed when server is
+// shutdown or when qs or ms fails then return a "come back later" error
+func tempError() *Error {
+	return &Error{
+		err: errors.New("system temporarily offline"),
+		code: http.StatusServiceUnavailable,
+		Message: "Service is temporarily unavailable",
 	}
 }

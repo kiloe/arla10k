@@ -171,17 +171,26 @@ func (s *Server) registrationHandler(w http.ResponseWriter, r *http.Request) *Er
 	if err != nil {
 		return userError(err)
 	}
+	if s.qs == nil {
+		return tempError()
+	}
 	// ask queryengine to register new user
 	m, err := s.qs.Register(string(b))
 	if err != nil {
 		return userError(err)
 	}
 	// attempt the mutation
+	if s.qs == nil {
+		return tempError()
+	}
 	err = s.qs.Mutate(m)
 	if err != nil {
 		return userError(err)
 	}
 	// commit the mutation to the log
+	if s.ms == nil {
+		return tempError()
+	}
 	err = s.ms.Write(m)
 	if err != nil {
 		return internalError(err)
@@ -222,11 +231,17 @@ func (s *Server) execHandler(w http.ResponseWriter, r *http.Request, t schema.To
 	}
 	m.Token = t
 	// send to query engine
+	if s.qs == nil {
+		return tempError()
+	}
 	err = s.qs.Mutate(&m)
 	if err != nil {
 		return userError(err)
 	}
 	// write to store
+	if s.ms == nil {
+		return tempError()
+	}
 	err = s.ms.Write(&m)
 	if err != nil {
 		return userError(err)
@@ -253,6 +268,9 @@ func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request, t schema.T
 	}
 	if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
 		return userError(err)
+	}
+	if s.qs == nil {
+		return tempError()
 	}
 	if err := s.qs.Query(q, w); err != nil {
 		return userError(err)
