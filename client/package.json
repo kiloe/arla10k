@@ -1,13 +1,13 @@
 {
   "name": "arla-client",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "client library for querying an Arla datastore",
   "main": "dist/index.js",
   "scripts": {
     "test": "npm run compile && jasmine --stop-on-failure",
     "compile": "npm run compile-tests && npm run compile-src",
     "compile-tests": "babel --source-maps inline -d spec/dist spec/src",
-    "compile-src": "babel --source-maps inline -d dist/ src/",
+    "compile-src": "babel -d dist/ src/",
     "prepublish": "npm run compile"
   },
   "repository": "http://github.com:kiloe/arla10k",
