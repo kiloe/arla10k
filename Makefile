@@ -22,7 +22,6 @@ GO := $(RUN) --entrypoint /usr/bin/go -e GOPATH=/app -e CGO_ENABLED=0 $(BASE)
 DELETE := $(RUN) --entrypoint /bin/rm $(BASE)
 BROWSERIFY := $(RUN) --entrypoint /usr/local/bin/browserify $(BASE)
 PEGJS := $(RUN) --entrypoint /usr/local/bin/pegjs $(BASE)
-10K :=
 
 build: bin/arla
 	docker build -t $(IMAGE) .

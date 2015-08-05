@@ -1,6 +1,6 @@
 {
   "name": "arla-client",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "client library for querying an Arla datastore",
   "main": "dist/index.js",
   "scripts": {

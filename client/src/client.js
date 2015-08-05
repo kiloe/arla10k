@@ -2,7 +2,6 @@ import {EventEmitter} from 'events';
 import {Query} from './query';
 
 // polyfills
-import 'babelify/polyfill';
 import 'isomorphic-fetch';
 
 // log writes a console log message
@@ -16,7 +15,7 @@ function log(...args){
 // if window object is available it uses the location
 // else it assumes localhost.
 function absurl(path){
-  if( path.startsWith('http') ){
+  if( /^http/.test(path) ){
     return path;
   }
   let host = 'http://localhost';
@@ -199,7 +198,7 @@ export class Client extends EventEmitter {
   // post returns a Promise for an API request.
   // The promise will either return the data or a rejection.
   _post(url, values, opts = {}){
-    Object.assign(opts, {token: this.token});
+    opts.token = this.token;
     return this._configure().then( info => {
       return this._req('post', url, values, opts)
     })

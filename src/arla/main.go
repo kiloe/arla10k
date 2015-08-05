@@ -35,7 +35,7 @@ type AuthenticatedHandlerFunc func(w http.ResponseWriter, r *http.Request, t sch
 // Config holds options for the server
 type Config struct {
 	// ConfigPath is the filepath to the javascript server configuration
-	ConfigPath string `long:"config-path" description:"path to the javascript config file" default:"./index.js" env:"ARLA_CONFIG_PATH"`
+	ConfigPath string `long:"config-path" description:"path to the javascript config file" default:"./config.js" env:"ARLA_CONFIG_PATH"`
 	// Secret is used for signing authentication tokens
 	Secret string `long:"secret" description:"secret to use for signing authentication tokens" required:"true" env:"ARLA_SECRET"`
 	// DataDir is the filepath to where data will be stored
