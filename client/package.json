@@ -1,6 +1,6 @@
 {
   "name": "arla-client",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "client library for querying an Arla datastore",
   "main": "dist/index.js",
   "scripts": {
@@ -10,6 +10,7 @@
     "compile-src": "babel --source-maps inline -d dist/ src/",
     "prepublish": "npm run compile"
   },
+  "repository": "http://github.com:kiloe/arla10k",
   "keywords": [
     "arla"
   ],
