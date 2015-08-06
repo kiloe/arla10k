@@ -1,7 +1,7 @@
 import {EventEmitter} from 'events';
 import {Query} from './query';
 
-// polyfills
+// polyfill fetch
 import 'isomorphic-fetch';
 
 // log writes a console log message

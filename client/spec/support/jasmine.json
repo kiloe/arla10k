@@ -4,6 +4,6 @@
         "dist/*.js"
     ],
     "helpers": [
-      "support/sourcemaps.js"
+      "support/helpers.js"
     ]
 }
