@@ -256,10 +256,10 @@ export class Client extends EventEmitter {
     })
   }
 
-  // maybeDeauthenticate checks for 403 responses and triggers
+  // maybeDeauthenticate checks for 403/401 responses and triggers
   // the client to deauth before passing on the response unchanged
   _maybeDeauthenticate(res){
-    if( res.status == 403 ){
+    if( res.status == 403 || res.status == 401 ){
       this.deauthenticate();
     }
     return res;
