@@ -1,0 +1,48 @@
+{
+    "parser": "babel-eslint",
+    "rules": {
+        "indent": [ 2, "tab", {"SwitchCase": 1} ],
+        "quotes": [ 2, "single" ],
+        "linebreak-style": [ 2, "unix" ],
+        "semi": [ 2, "always" ],
+        "no-console": 0,
+        "no-alert": 2,
+        "no-eval": 2,
+        "no-new-func": 2,
+        "no-new-wrappers": 2,
+        "no-with": 2,
+        "no-fallthrough": 2,
+        "no-floating-decimal": 2,
+        "comma-dangle": 0
+    },
+    "env": {
+        "es6": true,
+        "browser": true
+    },
+    "extends": "eslint:recommended",
+    "globals": {
+      "plv8": true,
+      "db": true,
+      "pgcrypto": true,
+      "UserError": true,
+      "arla": true
+    },
+    "ecmaFeatures": {
+        "jsx": true,
+        "experimentalObjectRestSpread": true,
+        "arrowFunctions": true,
+        "modules": true,
+        "blockBindings": true,
+        "classes": true,
+        "destructuring": true,
+        "objectLiteralComputedProperties": true,
+        "spread": true,
+        "superInFunctions": true,
+        "templateStrings": true,
+        "forOf": true,
+        "defaultParams": true,
+    },
+    "plugins": [
+        "react"
+    ]
+}
