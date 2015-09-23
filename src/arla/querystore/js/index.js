@@ -1,60 +1,59 @@
-import gql from "./graphql"
+import gql from './graphql';
 
 // UserError should be used when you want an error message to
 // be shown to an end user.
 class UserError extends Error {
-  constructor(m) {
-    var err = super(m);
-    Object.assign(this, {
-      name: "UserError",
-      message: m,
-      stack: err.stack
-    });
-  }
+	constructor(m) {
+		var err = super(m);
+		Object.assign(this, {
+			name: 'UserError',
+			message: m,
+			stack: err.stack
+		});
+	}
 }
 
 // QueryError is returned when query parsing fails.
 // It contains the line and context of the error
 class QueryError extends Error {
-  constructor(o) {
-    var err = super(o.message);
-    o.error = o.message;
-    delete o.message;
-    Object.assign(this, {
-      name: "QueryError",
-      message: JSON.stringify(o),
-      stack: err.stack
-    });
-  }
+	constructor(o) {
+		var err = super(o.message);
+		o.error = o.message;
+		delete o.message;
+		Object.assign(this, {
+			name: 'QueryError',
+			message: JSON.stringify(o),
+			stack: err.stack
+		});
+	}
 }
 
 // MutationError is returned when exec fails.
 // It contains the entire mutation
 class MutationError extends Error {
-  constructor(o) {
-    var err = super(o.message);
-    o.error = o.message;
-    delete o.message;
-    Object.assign(this, {
-      name: "MutationError",
-      message: JSON.stringify(o),
-      stack: err.stack,
-    });
-  }
+	constructor(o) {
+		var err = super(o.message);
+		o.error = o.message;
+		delete o.message;
+		Object.assign(this, {
+			name: 'MutationError',
+			message: JSON.stringify(o),
+			stack: err.stack,
+		});
+	}
 }
 
 (function(){
 
 	var listeners = {};
-	var tests = [];
 	var ddl = [];
 	var schema = {};
 	var actions = {};
 
-  const ARRAY_OF_SIMPLE = 1;
-  const ARRAY_OF_OBJECTS = 2;
-  const SIMPLE = 3;
-  const OBJECT = 4;
+	const ARRAY_OF_SIMPLE = 1;
+	const ARRAY_OF_OBJECTS = 2;
+	const SIMPLE = 3;
+	const OBJECT = 4;
 
 	function action(name, fn){
 		actions[name] = fn;
@@ -93,14 +92,14 @@ class MutationError extends Error {
 		}
 		if( def === undefined ){
 			switch(type){
-			case 'boolean':   def = "false";   break;
-			case 'json':      def = "'{}'";    break;
-			case 'timestampz':def = 'now()';   break;
-			default:          def = null;      break;
+				case 'boolean':   def = 'false';   break;
+				case 'json':      def = '\'{}\'';    break;
+				case 'timestampz':def = 'now()';   break;
+				default:          def = null;      break;
 			}
 		}
 		if( pk ){
-			x.push('PRIMARY KEY')
+			x.push('PRIMARY KEY');
 		}
 		if( def !== null ){
 			x.push(`DEFAULT ${ def }`);
@@ -111,7 +110,7 @@ class MutationError extends Error {
 	function define(name, klass){
 		klass.name = name;
 		if( !klass.id ){
-			klass.id = {type:'uuid', pk:true, def:'uuid_generate_v4()'}
+			klass.id = {type:'uuid', pk:true, def:'uuid_generate_v4()'};
 		}
 		let columns = Object.keys(klass).reduce(function(props, k){
 			if(!klass[k].type){
@@ -120,15 +119,15 @@ class MutationError extends Error {
 			klass[k].name = k;
 			klass[k].klass = klass;
 			if(klass[k].query){
-        // add the magic _count property
-        if( klass[k].type == 'array' && !klass[k+'_count']){
-          klass[k+'_count'] = {
-            name: k+'_count',
-            klass: klass,
-            type: 'counter',
-            queryName: k
-          }
-        }
+				// add the magic _count property
+				if( klass[k].type == 'array' && !klass[k+'_count']){
+					klass[k+'_count'] = {
+						name: k+'_count',
+						klass: klass,
+						type: 'counter',
+						queryName: k
+					};
+				}
 				return props;
 			}
 			props.push(klass[k]);
@@ -137,18 +136,18 @@ class MutationError extends Error {
 
 		let alter = function(stmt){
 			if(name != 'root'){
-				ddl.push(stmt)
+				ddl.push(stmt);
 			}
-		}
+		};
 		alter(`CREATE TABLE ${ plv8.quote_ident(name) } ()`);
 		alter(`CREATE TRIGGER before_trigger BEFORE INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('before')`);
 		alter(`CREATE CONSTRAINT TRIGGER after_trigger AFTER INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('after')`);
 		columns.forEach(function(p){
 			alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(p.name) } ${ col(p) }`);
 			if(p.unique){
-				alter(`CREATE UNIQUE INDEX ${ name }_${ p.name }_unq_idx ON ${ plv8.quote_ident(name) } (${ p.name })`)
+				alter(`CREATE UNIQUE INDEX ${ name }_${ p.name }_unq_idx ON ${ plv8.quote_ident(name) } (${ p.name })`);
 			}
-		})
+		});
 		if( klass.indexes ){
 			for(let k in klass.indexes){
 				let idx = klass.indexes[k];
@@ -184,74 +183,75 @@ class MutationError extends Error {
 		schema[name] = klass;
 	}
 
-	function defineJoin(tables, o){
-		if( !o ){
-			o = {};
+	function userValue(v, args) {
+		if(v.type == 'ident'){
+			return `$prev.${v.value}`;
 		}
-		o.properties = Object.assign(o.properties || {}, tables.reduce(function(o, name){
-			o[ `${ name }_id` ] = {type: 'uuid', ref:name};
-			return o;
-		}, {}));
-		o.indexes = Object.assign(o.indexes || {}, {
-			join: {
-				unique: true,
-			on: tables.map(t => `${t}_id`)
+		if(v.type == 'placeholder'){
+			if( v.value > args.length ){
+				throw new QueryError({message: `missing argument for placeholder $${v.value}`});
 			}
-		})
-		define(tables.join('_'), o);
+			console.info('$'+v.value, args[v.value-1], args);
+			return plv8.quote_literal(args[v.value - 1]);
+		}
+		return plv8.quote_literal(v.value);
 	}
 
-	var PARENT_MATCH = /\$this/g;
-
-  function userValue(v, args) {
-    if(v.type == 'ident'){
-      return `$prev.${v.value}`
-    }
-    if(v.type == 'placeholder'){
-      if( v.value > args.length ){
-        throw new QueryError({message: `missing argument for placeholder $${v.value}`});
-      }
-      console.info('$'+v.value, args[v.value-1], args);
-      return plv8.quote_literal(args[v.value - 1]);
-    }
-    return plv8.quote_literal(v.value);
-  }
-
-  // returns an SQL select with (single row single column)
+	// returns an SQL select with (single row single column)
 	function sqlForProperty(klass, session, ast, vars=[], i=0){
-    // fetch requested property
+		// fetch requested property
 		let property = klass[ast.name];
 		if( !property ){
-      throw new QueryError({
-        message: `no such property`,
-        property: ast.name,
-        kind: klass.name,
-      })
+			throw new QueryError({
+				message: `no such property`,
+				property: ast.name,
+				kind: klass.name,
+			});
 		}
 		if( !property.type ){
-      throw new QueryError({
-        message: `property has no type defined`,
-        property: ast.name,
-        kind: klass.name,
-      })
+			throw new QueryError({
+				message: `property has no type defined`,
+				property: ast.name,
+				kind: klass.name,
+			});
 		}
-    // shorthand for errors
-    let err = function(msg){
-      throw new QueryError({
-        message: msg,
-        property: property.name,
-        type: property.type,
-        kind: klass.name,
-      })
-    }
+		// shorthand for errors
+		let err = function(msg){
+			throw new QueryError({
+				message: msg,
+				property: property.name,
+				type: property.type,
+				kind: klass.name,
+			});
+		};
+		// variable interpolation
+		// converts ["sql with $1 $2", arg1, arg2] => "sql with x y"
+		let interpolate = function(a){
+			return a[0].replace(/\$(\d+)/g, function(match, ns){
+				let n = parseInt(ns,10);
+				if( n <= 0 ){
+					throw new UserError(`invalid placeholder name: \$${ns}`);
+				}
+				if( a.length-1 < n ){
+					throw new UserError(`no variable for placeholder: \$${ns}`);
+				}
+				if( typeof a[n] == 'undefined' ){
+					console.warn(`placeholder variable ${n} is undefined in query for ${klass.name} ${property.name}`);
+				}
+				if( a[n] && cxtReverse[a[n]] ){
+					return a[n];
+				}
+				return plv8.quote_literal(a[n]);
+			});
+		};
 		// simple property fetch
 		if( !property.query ){
-      if( ast.args.length > 0 ){
-        err(`property type does not accept arguments`);
-      }
-      if( ast.filters.length > 0 ){
-        err(`property type does not accept filters`);
-      }
+			if( ast.args.length > 0 ){
+				err(`property type does not accept arguments`);
+			}
+			if( ast.filters.length > 0 ){
+				err(`property type does not accept filters`);
+			}
 			return `$prev.${property.name}`;
 		}
 		// build context that can be used to reference parent table
@@ -264,268 +264,277 @@ class MutationError extends Error {
 		cxt.session = session;
 		// fetch the sql query
 		let sql = property.query.apply(cxt, ast.args);
-		// interpolate any variables into the sql
-		if( Array.isArray(sql) ){
-			sql = sql[0].replace(/\$(\d+)/g, function(match, ns){
-				let n = parseInt(ns,10);
-				if( n <= 0 ){
-					throw new UserError(`invalid placeholder name: \$${ns}`);
-				}
-				if( sql.length-1 < n ){
-					throw new UserError(`no variable for placeholder: \$${ns}`);
-				}
-				if( typeof sql[n] == 'undefined' ){
-					console.warn(`placeholder variable ${n} is undefined in query for ${klass.name} ${property.name}`);
-				}
-				if( sql[n] && cxtReverse[sql[n]] ){
-					return sql[n];
-				}
-				return plv8.quote_literal(sql[n]);
-			});
-		}
-		// no query returned
+		// check if no query returned
 		if( !sql ){
-      err(`${klass.name}.${property.name} did not return a valid sql query`);
+			err(`${klass.name}.${property.name} did not return a valid sql query`);
 		}
-    let withs = [sql];
-    let isArray = property.type == 'array';
-    let format = isArray ? ARRAY_OF_SIMPLE : SIMPLE;
-    // select the properties for subquery
+		// check if we got an object back
+		let shadow;
+		if( !Array.isArray(sql) && typeof sql == 'object' ){
+			let args = sql.args || [];
+			// merge any withs from these types of queries into the main CTE to allow shadowing
+			if( sql.with ){
+				if( typeof sql.with != 'string' ){
+					err(`${klass.name}.${property.name} did not return a valid sql query object: expected 'with' to be a string`);
+				}
+				shadow = interpolate([sql.with].concat(args));
+			}
+			// ensure query part is correct
+			if( !sql.query || typeof sql.query != 'string' ){
+				err(`${klass.name}.${property.name} did not return a valid sql query object: expected 'query' to be a string`);
+			}
+			// convert to array format
+			sql = [sql.query].concat(sql.args);
+		}
+		// interpolate any variables into the sql to convert to string
+		if( Array.isArray(sql) ){
+			sql = interpolate(sql);
+		}
+		if( typeof sql != 'string' ){
+			err(`${klass.name}.${property.name} did not return a valid sql query: expected sql to be a string got: ${typeof sql}`);
+		}
+		let withs = [sql];
+		let isArray = property.type == 'array';
+		let format = isArray ? ARRAY_OF_SIMPLE : SIMPLE;
+		// select the properties for subquery
 		let targetKlass = schema[property.of || property.type];
-    if( targetKlass ){
-      let _ast = ast;
-      let plucked = false;
-      let halt = false;
-      let originalProps = ast.props;
-      let where = '';
-      let order = '';
-      // normalize ast filters
-      // eg..
-      //     my_property.pluck(x).pluck(y)
-      // becomes...
-      //     my_property.pluck(x.pluck(y))
-      ast.filters = ast.filters.filter(function(f){
-        if( halt ){
-          err(`cannot use filter ${f.name} here`);
-        }
-        switch(f.name){
-          case 'pluck':
-            // push any chained plucks into the next property's filters
-            if( plucked ){
-              _ast.filters.push(f);
-              plucked = f;
-              return false;
-            }
-            if( _ast.props.length > 0 ){
-              console.warn(`ignoring redundent ${property.name} selections ${_ast.props.map(p => p.name).join(',')} due to ${f.name}`);
-            }
-            _ast.props = [f.prop];
-            _ast = f.prop;
-            plucked = f;
-            return true;
-          case 'count':
-            if( plucked ){
-              console.warn(`ignoring redundent pluck filter on ${property.name} due to count`);
-            }
-            if( _ast.props.length > 0 ){
-              console.warn(`ignoring redundent ${property.name} selections ${_ast.props.map(p => p.name).join(',')} due to ${f.name}`);
-            }
-            ast.props = [{
-              name: 'id',
-              args: [],
-              props: [],
-              filters: [],
-            }]
-            halt = true;
-            return true;
-          case 'where':
-            if( where ){
-              where += ' AND ';
-            }
-            let a = userValue(f.a, vars);
-            let b = userValue(f.b, vars);
-            where += `where ${a} ${f.op} ${b}`;
-            return false;
-          case 'sortBy':
-            if( order ){
-              err('multiple sort operations used');
-            }
-            order = `order by $prev.${f.ident} ${f.dir}`;
-            return false;
-          case 'sort':
-            if( order ){
-              err('multiple sort operations used');
-            }
-            order = `order by $prev ${f.dir}`;
-            return false;
-          default:
-            return true;
-        }
-      });
-      // normalize property selection for plucks
-      // eg..
-      //     my_property.pluck(x).pluck(y){id}
-      // becomes...
-      //     my_property.pluck(x).pluck(y{id})
-      if( plucked && originalProps.length > 0 ){
-        plucked.prop.props = originalProps;
-      }
-      // If no properties explictly chosen assume ALL
-      if( ast.props.length === 0 ){
-        err(`expected at least one property selection`);
-        ast.props = Object.keys(targetKlass).reduce(function(props, k){
-          let p = targetKlass[k];
-          if( !p.type ){
-            return props;
-          }
-          props.push({
-            name: k,
-            args: [],
-            props: [],
-            filters: []
-          })
-          return props;
-        },[])
-      }
-      withs.unshift(`${sqlForClass(targetKlass, session, ast, vars, i+1)} from $prev ${where} ${order}`);
-      format = isArray ? ARRAY_OF_OBJECTS : OBJECT;
-    }
-    // Add filter queries
-    ast.filters.forEach(function(f){
-      switch(f.name){
-        case 'first':
-          withs.unshift(`select * from $prev limit 1`);
-          format = format == ARRAY_OF_OBJECTS ? OBJECT : SIMPLE;
-          break;
-        case 'pluck':
-          format = ARRAY_OF_SIMPLE;
-          break;
-        case 'count':
-          withs.unshift(`select count(*) from $prev`);
-          format = SIMPLE;
-          break;
-        case 'take':
-          withs.unshift(`select * from $prev limit ${f.n}`);
-          break;
-        case 'slice':
-          withs.unshift(`select * from $prev offset ${f.start} limit ${f.end}`);
-          break;
-        case 'sort':
-          withs.unshift(`select * from $prev order by $prev ${f.dir}`);
-          break;
-        case 'sortBy':
-          withs.unshift(`select * from $prev order by $prev.${f.ident} ${f.dir}`);
-          break;
-        default:
-          err(`unknown filter or cannot use filter here: '${f.name}'`);
-      }
-    })
-    // convert sql to always return a single row with a single json column
-    switch(format){
-      case ARRAY_OF_SIMPLE: // multi row single col
-        withs.unshift(`select coalesce(json_agg(to_json(row($prev.*))->'f1'),'[]'::json) from $prev`)
-        break;
-      case ARRAY_OF_OBJECTS: // multi row multi col
-        withs.unshift(`select coalesce(json_agg($prev.*),'[]'::json) from $prev`)
-        break;
-      case OBJECT: // single row multi col
-        withs.unshift(`select row_to_json($prev.*) from $prev`)
-        break;
-      case SIMPLE: // single row single col
-        withs.unshift(`select to_json(row($prev.*))->'f1' from $prev`)
-        break;
-      default:
-        err(`fatal: unexpected to-json format`);
-    }
-    let out = withs.reduce(function(w, sql, j){
-      let curr = `q_${i}_${j}`;
-      let prev = `q_${i}_${j+1}`;
-      if( j < withs.length-1 ){ // ignore last (user sql)
-        sql = sql.split('$prev').join(prev)
-      }
-      let ws = '\n' + Array(4*i).join(' ');
-      if( j > 0 ){
-        let comma = j > 1 ? ',' : '';
-        return `${ws}${curr} as (${sql}) ${comma}` + w;
-      }
-      return `${ws}${sql}` + w;
-    },'');
-    if( withs.length > 1 ){
-      return `(with ${out})`
-    }else{
-      return `(${out})`;
-    }
+		if( targetKlass ){
+			let _ast = ast;
+			let plucked = false;
+			let halt = false;
+			let originalProps = ast.props;
+			let where = '';
+			let order = '';
+			// normalize ast filters
+			// eg..
+			//     my_property.pluck(x).pluck(y)
+			// becomes...
+			//     my_property.pluck(x.pluck(y))
+			ast.filters = ast.filters.filter(function(f){
+				if( halt ){
+					err(`cannot use filter ${f.name} here`);
+				}
+				switch(f.name){
+					case 'pluck':
+						// push any chained plucks into the next property's filters
+						if( plucked ){
+							_ast.filters.push(f);
+							plucked = f;
+							return false;
+						}
+						if( _ast.props.length > 0 ){
+							console.warn(`ignoring redundent ${property.name} selections ${_ast.props.map(p => p.name).join(',')} due to ${f.name}`);
+						}
+						_ast.props = [f.prop];
+						_ast = f.prop;
+						plucked = f;
+						return true;
+					case 'count':
+						if( plucked ){
+							console.warn(`ignoring redundent pluck filter on ${property.name} due to count`);
+						}
+						if( _ast.props.length > 0 ){
+							console.warn(`ignoring redundent ${property.name} selections ${_ast.props.map(p => p.name).join(',')} due to ${f.name}`);
+						}
+						ast.props = [{
+							name: 'id',
+							args: [],
+							props: [],
+							filters: [],
+						}];
+						halt = true;
+						return true;
+					case 'where':
+						if( where ){
+							where += ' AND ';
+						}
+						let a = userValue(f.a, vars);
+						let b = userValue(f.b, vars);
+						where += `where ${a} ${f.op} ${b}`;
+						return false;
+					case 'sortBy':
+						if( order ){
+							err('multiple sort operations used');
+						}
+						order = `order by $prev.${f.ident} ${f.dir}`;
+						return false;
+					case 'sort':
+						if( order ){
+							err('multiple sort operations used');
+						}
+						order = `order by $prev ${f.dir}`;
+						return false;
+					default:
+						return true;
+				}
+			});
+			// normalize property selection for plucks
+			// eg..
+			//     my_property.pluck(x).pluck(y){id}
+			// becomes...
+			//     my_property.pluck(x).pluck(y{id})
+			if( plucked && originalProps.length > 0 ){
+				plucked.prop.props = originalProps;
+			}
+			// If no properties explictly chosen assume ALL
+			if( ast.props.length === 0 ){
+				err(`expected at least one property selection`);
+				ast.props = Object.keys(targetKlass).reduce(function(props, k){
+					let p = targetKlass[k];
+					if( !p.type ){
+						return props;
+					}
+					props.push({
+						name: k,
+						args: [],
+						props: [],
+						filters: []
+					});
+					return props;
+				},[]);
+			}
+			withs.unshift(`${sqlForClass(targetKlass, session, ast, vars, i+1)} from $prev ${where} ${order}`);
+			format = isArray ? ARRAY_OF_OBJECTS : OBJECT;
+		}
+		// Add filter queries
+		ast.filters.forEach(function(f){
+			switch(f.name){
+				case 'first':
+					withs.unshift(`select * from $prev limit 1`);
+					format = format == ARRAY_OF_OBJECTS ? OBJECT : SIMPLE;
+					break;
+				case 'pluck':
+					format = ARRAY_OF_SIMPLE;
+					break;
+				case 'count':
+					withs.unshift(`select count(*) from $prev`);
+					format = SIMPLE;
+					break;
+				case 'take':
+					withs.unshift(`select * from $prev limit ${f.n}`);
+					break;
+				case 'slice':
+					withs.unshift(`select * from $prev offset ${f.start} limit ${f.end}`);
+					break;
+				case 'sort':
+					withs.unshift(`select * from $prev order by $prev ${f.dir}`);
+					break;
+				case 'sortBy':
+					withs.unshift(`select * from $prev order by $prev.${f.ident} ${f.dir}`);
+					break;
+				default:
+					err(`unknown filter or cannot use filter here: '${f.name}'`);
+			}
+		});
+		// convert sql to always return a single row with a single json column
+		switch(format){
+			case ARRAY_OF_SIMPLE: // multi row single col
+				withs.unshift(`select coalesce(json_agg(to_json(row($prev.*))->'f1'),'[]'::json) from $prev`);
+				break;
+			case ARRAY_OF_OBJECTS: // multi row multi col
+				withs.unshift(`select coalesce(json_agg($prev.*),'[]'::json) from $prev`);
+				break;
+			case OBJECT: // single row multi col
+				withs.unshift(`select row_to_json($prev.*) from $prev`);
+				break;
+			case SIMPLE: // single row single col
+				withs.unshift(`select to_json(row($prev.*))->'f1' from $prev`);
+				break;
+			default:
+				err(`fatal: unexpected to-json format`);
+		}
+		let out = withs.reduce(function(w, sql, j){
+			let curr = `q_${i}_${j}`;
+			let prev = `q_${i}_${j+1}`;
+			if( j < withs.length-1 ){ // ignore last (user sql)
+				sql = sql.split('$prev').join(prev);
+			}
+			let ws = '\n' + Array(4*i).join(' ');
+			if( j > 0 ){
+				let comma = j > 1 ? ',' : '';
+				return `${ws}${curr} as (${sql}) ${comma}` + w;
+			}
+			return `${ws}${sql}` + w;
+		},'');
+		if( shadow ){
+			out = shadow + (withs.length>1 ? ',' : ' ') + out;
+		}
+		if( withs.length > 1 || shadow ){
+			return `(with ${out})`;
+		}else{
+			return `(${out})`;
+		}
 	}
 
-  // returns an SQL select with (multi row multi column)
+	// returns an SQL select with (multi row multi column)
 	function sqlForClass(klass, session, ast, vars=[], i=0){
-		return "select " + ast.props.map(function(p){
+		return 'select ' + ast.props.map(function(p){
 			return sqlForProperty(klass, session, p, vars, i) + ` as ${p.alias}`;
 		}).join(',');
 	}
 
-  // hash of property signature
-  // FIXME: naive
-  function sig(p){
-    return JSON.stringify({
-      name: p.name,
-      filters: p.filters,
-      args: p.args
-    });
-  }
+	// hash of property signature
+	// FIXME: naive
+	function sig(p){
+		return JSON.stringify({
+			name: p.name,
+			filters: p.filters,
+			args: p.args
+		});
+	}
 
-  // deduplicates property selections
-  function normalizeProps(props) {
-    let seen = {};
-    return props.filter(function(p){
-      if( p.props.length > 0 ){
-        p.props = normalizeProps(p.props)
-      }
-      let curr = {p:p, sig:sig(p)};
-      let prev = seen[p.alias];
-      if( prev ){
-        // mismatched signatures
-        if( prev.sig != curr.sig ){
-          throw new QueryError({
-            message:`conflicting properties named '${p.alias}'`,
-          });
-        }
-        // merge
-        mergeProps(prev.p.props, curr.p.props);
-        // drop
-        return false;
-      }
-      seen[p.alias] = curr;
-      return true;
-    })
-  }
+	// deduplicates property selections
+	function normalizeProps(props) {
+		let seen = {};
+		return props.filter(function(p){
+			if( p.props.length > 0 ){
+				p.props = normalizeProps(p.props);
+			}
+			let curr = {p:p, sig:sig(p)};
+			let prev = seen[p.alias];
+			if( prev ){
+				// mismatched signatures
+				if( prev.sig != curr.sig ){
+					throw new QueryError({
+						message:`conflicting properties named '${p.alias}'`,
+					});
+				}
+				// merge
+				mergeProps(prev.p.props, curr.p.props);
+				// drop
+				return false;
+			}
+			seen[p.alias] = curr;
+			return true;
+		});
+	}
 
-  function mergeProps(dest, src){
-    src.forEach(function(sp){
-      let found = false;
-      dest.forEach(function(dp){
-        if( sp.alias == dp.alias ){
-          found = true;
-          // check for conflicts
-          if( sig(sp) != sig(dp) ){
-            throw new QueryError({
-              message:`conflicting properties for '${sp.alias}' cannot be merged`
-            });
-          }
-          mergeProps(dp.props, sp.props);
-        }
-      })
-      // if not found - add it
-      if( !found ){
-        dest.push(sp);
-      }
-    })
-  }
+	function mergeProps(dest, src){
+		src.forEach(function(sp){
+			let found = false;
+			dest.forEach(function(dp){
+				if( sp.alias == dp.alias ){
+					found = true;
+					// check for conflicts
+					if( sig(sp) != sig(dp) ){
+						throw new QueryError({
+							message:`conflicting properties for '${sp.alias}' cannot be merged`
+						});
+					}
+					mergeProps(dp.props, sp.props);
+				}
+			});
+			// if not found - add it
+			if( !found ){
+				dest.push(sp);
+			}
+		});
+	}
 
 	arla.trigger = function(e){
 		let op = e.opKind + '-' + e.op;
 		['*', e.table].forEach(function(table){
-			let ops = listeners[table]
+			let ops = listeners[table];
 			if( !ops || ops.length == 0){
 				return;
 			}
@@ -535,7 +544,7 @@ class MutationError extends Error {
 			}
 			triggers.forEach(function(fn){
 				let r = new fn.klass();
-				for(var k in e.record){
+				for(let k in e.record){
 					r[k] = e.record[k];
 				}
 				try{
@@ -546,7 +555,7 @@ class MutationError extends Error {
 					}
 					throw e;
 				}
-				for(var k in e.record){
+				for(let k in e.record){
 					e.record[k] = r[k];
 				}
 			});
@@ -560,37 +569,37 @@ class MutationError extends Error {
 	};
 
 	arla.exec = function(m, replay){
-    if( !m.name ){
-      throw new UserError("invalid action name");
-    }
-    if( !m.args ){
-      m.args = [];
-    }
-    if( !m.version ){
-      throw new MutationError({
-        message: "cannot exec mutation without version",
-        mutation: m
-      })
-    }
-    // if mutation is for an older version
-    // ask the transform function to update it
-    let iter = 0;
-    while( m.version < arla.cfg.version ){
-      // catch infinite recursion (ok 1000 isn't really infinite but if you
-      // have 1000 versions you have bigger problems.)
-      if( iter > 1000 ){
-        throw new UserError("transform function appears to be causing infitie recursion");
-      }
-      if( !arla.cfg.transform ){
-        throw new MutationError({
-          message: `mutation requires transforming from version ${m.version} to ${arla.cfg.version} but no transform function was defined`,
-          mutation: m
-        })
-      }
-      console.debug(`transforming ${m.name} from version ${m.version} to ${arla.cfg.version}...`);
-      m = arla.cfg.transform(m, arla.cfg.version);
-      iter++;
-    }
+		if( !m.name ){
+			throw new UserError('invalid action name');
+		}
+		if( !m.args ){
+			m.args = [];
+		}
+		if( !m.version ){
+			throw new MutationError({
+				message: 'cannot exec mutation without version',
+				mutation: m
+			});
+		}
+		// if mutation is for an older version
+		// ask the transform function to update it
+		let iter = 0;
+		while( m.version < arla.cfg.version ){
+			// catch infinite recursion (ok 1000 isn't really infinite but if you
+			// have 1000 versions you have bigger problems.)
+			if( iter > 1000 ){
+				throw new UserError('transform function appears to be causing infitie recursion');
+			}
+			if( !arla.cfg.transform ){
+				throw new MutationError({
+					message: `mutation requires transforming from version ${m.version} to ${arla.cfg.version} but no transform function was defined`,
+					mutation: m
+				});
+			}
+			console.debug(`transforming ${m.name} from ${m.version} to ${arla.cfg.version}...`);
+			m = arla.cfg.transform(m, arla.cfg.version);
+			iter++;
+		}
 		var fn = actions[m.name];
 		if( !fn ){
 			if( /^[a-zA-Z0-9_]+$/.test(m.name) ){
@@ -600,7 +609,7 @@ class MutationError extends Error {
 			}
 		}
 		// exec the mutation func
-		console.debug(`action ${m.name} args:`, m.args, "session:", m.token);
+		console.debug(`action ${m.name} args:`, m.args, 'session:', m.token);
 		var queryArgs = fn.apply({session:m.token,replay:replay}, m.args);
 		if( !queryArgs ){
 			console.debug(`action ${m.name} was a noop`);
@@ -623,13 +632,13 @@ class MutationError extends Error {
 			}
 			if( e.message ){
 				if( (/violates unique constraint/i).test(e.message) ){
-					e.message = "violates unique constraint";
+					e.message = 'violates unique constraint';
 				}
 			}
 			throw new MutationError({
-        message: e.message.replace('UserError: ', ''),
-        mutation: m
-      })
+				message: e.message.replace('UserError: ', ''),
+				mutation: m
+			});
 		}
 	};
 
@@ -638,36 +647,37 @@ class MutationError extends Error {
 			throw new QueryError({error:'arla_query: query text cannot be null'});
 		}
 		query = `root(){ ${query} }`;
-		console.debug("AQL:", query, args);
+		console.debug('AQL:', query, args);
 		let ast;
 		try{
 			ast = gql.parse(query);
 		}catch(err){
-      if(err.stack){
-        console.debug(err.stack);
-      }
-			if( err.line && err.offset ){
-				console.warn( query.split(/\n/)[err.line-1] );
+			let e = err;
+			if(e.stack){
+				console.debug(e.stack);
+			}
+			if( e.line && e.offset ){
+				console.warn( query.split(/\n/)[e.line-1] );
 				console.warn( `${ Array(err.column).join('-') }^` );
-				err = new QueryError({
-          line: err.line,
-          column: err.column,
-          offset: err.offset,
-          message: err.message,
-          context: query
-        });
+				e = new QueryError({
+					line: e.line,
+					column: e.column,
+					offset: e.offset,
+					message: e.message,
+					context: query
+				});
 			}
 			throw err;
 		}
-		console.debug("AST (raw):", ast);
-    ast.props = normalizeProps(ast.props);
-		console.debug("AST (normalized):", ast);
-    if( ast.name != 'root' ){
-      throw new QueryError({message:`expected root() property got ${ast.name}`});
-    }
+		console.debug('AST (raw):', ast);
+		ast.props = normalizeProps(ast.props);
+		console.debug('AST (normalized):', ast);
+		if( ast.name != 'root' ){
+			throw new QueryError({message:`expected root() property got ${ast.name}`});
+		}
 		let sql = sqlForClass(schema.root, token, ast, args);
 		let res = db.query(sql)[0];
-		console.debug("RESULT", res);
+		console.debug('RESULT', res);
 		return res;
 	};
 
@@ -677,18 +687,18 @@ class MutationError extends Error {
 			throw new UserError('invalid credentials');
 		}
 		return res[0];
-	}
+	};
 
 	arla.register = function(values){
 		return arla.cfg.register(values);
-	}
+	};
 
 	// init will only ever run once
 	arla.init = function(){
 		ddl.forEach(function(stmt){
 			db.query(stmt);
 		});
-	}
+	};
 
 	// configure will be run everytime a js context is started
 	arla.configure = function(cfg){
@@ -711,10 +721,10 @@ class MutationError extends Error {
 		if( !cfg.register ){
 			throw new Error('missing required "register" function');
 		}
-    if( !cfg.version ){
-      cfg.version = 1;
-    }
-	}
+		if( !cfg.version ){
+			cfg.version = 1;
+		}
+	};
 
 })();
 

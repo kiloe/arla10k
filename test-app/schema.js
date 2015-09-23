@@ -14,7 +14,15 @@ export class root {
 	}}
 
 	static numbers = {type:'array', of:'int', query: function(){
-		return `select * from unnest(ARRAY[10,5,11])`
+		return `select * from unnest(ARRAY[10,5,11])`;
+	}}
+
+	static shadowed_members = {type: 'array', of:'member', query: function(){
+		return {
+			with: `member as (select id,username from member where length(username) < 4)`,
+			query: `select * from public.member`,
+			args: []
+		};
 	}}
 
 }
@@ -47,7 +55,14 @@ export class member {
 
 	// contrived example of a computed property
 	static uppername = {type: 'text', query: function(){
-		return [`select upper(username) from member where id = $1`, this.id]
+		return [`select upper(username) from member where id = $1`, this.id];
+	}}
+
+	// return everyone! (but it may be shadowed by parent)
+	static everyone = {type: 'array', of:'member', query:function(){
+		return [`
+			select * from member
+		`];
 	}}
 
 	// after update or insert trigger
@@ -87,7 +102,7 @@ export class friend {
 	static member_2_id = {type: 'uuid', ref:'member'}
 
 	static indexes = {
-			unique_join: {on: ['member_1_id', 'member_2_id'], unique:true}
+		unique_join: {on: ['member_1_id', 'member_2_id'], unique:true}
 	}
 
 	beforeChange(){

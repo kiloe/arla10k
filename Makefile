@@ -69,7 +69,8 @@ test-client: build
 		-v $(PWD)/$(CONF):/etc/postgresql/9.4/main \
 		$(IMAGE) \
 			--secret=testing \
-			--debug
+			--debug \
+			--config-path=./config.js
 	(cd client && npm test) || (docker logs 10k &> client-test.log && false)
 	docker rm -f 10k 2>/dev/null || true
 

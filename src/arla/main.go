@@ -81,8 +81,10 @@ func (s *Server) startQueryEngine() (err error) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		if err := s.qs.Wait(); err != nil {
-			fmt.Println("postgresql exited: ", err)
+		if s.qs != nil {
+			if err := s.qs.Wait(); err != nil {
+				fmt.Println("postgresql exited: ", err)
+			}
 		}
 		s.qs = nil
 		fmt.Println("queryengine shutdown")

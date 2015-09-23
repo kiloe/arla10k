@@ -95,13 +95,13 @@ func TestAPI(t *testing.T) {
 
 	// ensure alice doesn't have any email addresses yet
 	alice.Query(`
-    me(){
+		me(){
 			username
 			email_addresses() {
 				addr
 			}
 		}
-  `).ShouldReturn(`
+	`).ShouldReturn(`
 		{
 			"me":{
 				"username":"alice",
@@ -313,6 +313,46 @@ func TestAPI(t *testing.T) {
 			"me":{
 				"friends": {"username":"bob"}
 			}
+		}
+	`)
+
+	// -------------------------------------
+
+	// test shadowing
+
+	// sanity test first
+	alice.Query(`
+		shadowed_members(){
+			username
+		}
+
+	`).ShouldReturn(`
+		{
+			"shadowed_members": [
+				{"username":"alice"},
+				{"username":"bob"},
+				{"username":"kate"}
+			]
+		}
+	`)
+	// the call the everyone() should only return members with
+	// username.length < 4 ... even tho the SQL just says "select * from memeber"
+	// this is because the shadow_memebers() call declares CTEs that override
+	// the default table names.... it's a very useful way of ensuring permissions by
+	// declaring everything that is "visible" from the the "viewer" node as CTEs
+	// then using SQL throughout the other nodes
+	alice.Query(`
+		shadowed_members(){
+			everyone(){username}
+		}
+
+	`).ShouldReturn(`
+		{
+			"shadowed_members": [
+				{"everyone": [{"username":"bob"}]},
+				{"everyone": [{"username":"bob"}]},
+				{"everyone": [{"username":"bob"}]}
+			]
 		}
 	`)
 
@@ -563,7 +603,7 @@ func TestMain(m *testing.M) {
 	}
 	// start server
 	server := New(Config{
-		ConfigPath: "/app/test-app/index.js",
+		ConfigPath: "/app/test-app/config.js",
 		DataDir:    "/tmp/",
 		Secret:     "mysecret",
 		Debug:      true,

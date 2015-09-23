@@ -4,20 +4,20 @@ export function registerMember( {id, username, password} ) {
 		insert into member (id, username, password)
 		values ($1, $2, $3)
 	`, id, username, password];
-};
+}
 
 export function destroyMember() {
 	return [`
 		delete from member where id = $1
 	`, this.session.id];
-};
+}
 
 export function addEmailAddress(addr) {
 	return [`
 		insert into email (member_id, addr)
 		values ($1, $2)
 	`, this.session.id, addr];
-};
+}
 
 export function updateEmailAddress(oldAddr, newAddr) {
 	return [`
@@ -35,4 +35,4 @@ export function addFriend(id) {
 
 export function exampleOp( a, b, c ) {
 	return [`select $1,$2,$3`, a, b, c];
-};
+}

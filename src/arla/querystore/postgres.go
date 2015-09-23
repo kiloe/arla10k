@@ -101,6 +101,12 @@ func (p *postgres) GetLogLevel() logLevel {
 
 // Stop disconnects and shutsdown the queryengine
 func (p *postgres) Stop() (err error) {
+	if p.cmd == nil {
+		return nil
+	}
+	if p.cmd.Process == nil {
+		return nil
+	}
 	p.cmd.Process.Signal(os.Kill)
 	return nil
 }
