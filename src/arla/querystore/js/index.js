@@ -113,6 +113,9 @@ class MutationError extends Error {
 			klass.id = {type:'uuid', pk:true, def:'uuid_generate_v4()'};
 		}
 		let columns = Object.keys(klass).reduce(function(props, k){
+			if(klass[k].ref && !klass[k].type){
+				klass[k].type = 'uuid';
+			}
 			if(!klass[k].type){
 				return props;
 			}
