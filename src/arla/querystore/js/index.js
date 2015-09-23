@@ -274,6 +274,9 @@ class MutationError extends Error {
 			let args = sql.args || [];
 			// merge any withs from these types of queries into the main CTE to allow shadowing
 			if( sql.with ){
+				if( Array.isArray(sql.with) ){
+					sql.with = sql.with.join(',');
+				}
 				if( typeof sql.with != 'string' ){
 					err(`${klass.name}.${property.name} did not return a valid sql query object: expected 'with' to be a string`);
 				}
