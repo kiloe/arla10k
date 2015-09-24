@@ -40,8 +40,10 @@ func TestAPI(t *testing.T) {
 	alice.Query(`me(){username}`).ShouldReturn(`
 		{"me":{"username":"alice"}}
 	`)
-	bob.Query(`me(){username}`).ShouldReturn(`
-		{"me":{"username":"bob"}}
+
+	// check weird "name_" prop workaround converts to "name"
+	bob.Query(`me(){name}`).ShouldReturn(`
+		{"me":{"name":"bob"}}
 	`)
 
 	// fetch name via dynamic property

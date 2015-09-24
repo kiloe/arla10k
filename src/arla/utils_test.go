@@ -160,6 +160,7 @@ func (tc *TestCase) ShouldBeAuthenticated() *TestCase {
 
 type User struct {
 	ID       schema.UUID `json:"id"`
+	Name     string      `json:"name,omitempty"`
 	Username string      `json:"username,omitempty"`
 	Password string      `json:"password,omitempty"`
 	Token    string      `json:"-,omitempty"`
@@ -228,8 +229,7 @@ func NewUser(name, pw string) *User {
 	return &User{
 		ID:       schema.TimeUUID(),
 		Username: name,
+		Name:     name,
 		Password: pw,
 	}
 }
-
-var ()

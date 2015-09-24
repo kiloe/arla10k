@@ -109,31 +109,35 @@ class MutationError extends Error {
 
 	function define(name, klass){
 		klass.name = name;
-		if( !klass.id ){
-			klass.id = {type:'uuid', pk:true, def:'uuid_generate_v4()'};
+		if( !klass.props ){
+			throw UserError('class '+klass.name+' has no props');
 		}
-		let columns = Object.keys(klass).reduce(function(props, k){
-			if(klass[k].ref && !klass[k].type){
-				klass[k].type = 'uuid';
+		if( !klass.props.id ){
+			klass.props.id = {type:'uuid', pk:true, def:'uuid_generate_v4()'};
+		}
+		let columns = Object.keys(klass.props).reduce(function(props, k){
+			let prop = klass.props[k];
+			if(prop.ref && !prop.type){
+				prop.type = 'uuid';
 			}
-			if(!klass[k].type){
-				return props;
+			if(!prop.type){
+				prop.type = 'text';
 			}
-			klass[k].name = k;
-			klass[k].klass = klass;
-			if(klass[k].query){
+			prop.name = k;
+			prop.klass = klass;
+			if(prop.query){
 				// add the magic _count property
-				if( klass[k].type == 'array' && !klass[k+'_count']){
-					klass[k+'_count'] = {
-						name: k+'_count',
+				if( prop.type == 'array' && !klass.props[prop.name+'_count']){
+					klass[prop.name+'_count'] = {
+						name: prop.name+'_count',
 						klass: klass,
 						type: 'counter',
-						queryName: k
+						queryName: prop.name
 					};
 				}
 				return props;
 			}
-			props.push(klass[k]);
+			props.push(prop);
 			return props;
 		},[]);
 
@@ -203,7 +207,7 @@ class MutationError extends Error {
 	// returns an SQL select with (single row single column)
 	function sqlForProperty(klass, session, ast, vars=[], i=0){
 		// fetch requested property
-		let property = klass[ast.name];
+		let property = klass.props[ast.name];
 		if( !property ){
 			throw new QueryError({
 				message: `no such property`,
@@ -259,7 +263,7 @@ class MutationError extends Error {
 		}
 		// build context that can be used to reference parent table
 		let cxtReverse = {};
-		let cxt = Object.keys(klass).reduce(function(o, k){
+		let cxt = Object.keys(klass.props).reduce(function(o, k){
 			o[k] = '$prev.'+k;
 			cxtReverse[o[k]] = true;
 			return o;
@@ -368,7 +372,8 @@ class MutationError extends Error {
 						if( order ){
 							err('multiple sort operations used');
 						}
-						order = `order by $prev ${f.dir}`;
+						let by = plucked ? 'plucked' : '$prev';
+						order = `order by ${by} ${f.dir}`;
 						return false;
 					default:
 						return true;

@@ -1,9 +1,9 @@
 
-export function registerMember( {id, username, password} ) {
+export function registerMember( {id, name, username, password} ) {
 	return [`
-		insert into member (id, username, password)
-		values ($1, $2, $3)
-	`, id, username, password];
+		insert into member (id, name, username, password)
+		values ($1, $2, $3, $4)
+	`, id, name, username, password];
 }
 
 export function destroyMember() {
