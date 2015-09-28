@@ -1,34 +1,4 @@
 
-export class root {
-
-	static props = {
-		me: {type: 'member', query: function(){
-			return [`select * from member where id = $1`, this.session.id];
-		}},
-
-		members: {type: 'array', of: 'member', query: function(){
-			return `select * from member`;
-		}},
-
-		email_addresses: {type: 'array', of: 'email', query: function(){
-			return `select * from email`;
-		}},
-
-		numbers: {type:'array', of:'int', query: function(){
-			return `select * from unnest(ARRAY[10,5,11])`;
-		}},
-
-		shadowed_members: {type: 'array', of:'member', query: function(){
-			return {
-				with: `member as (select id,username from member where length(username) < 4)`,
-				query: `select * from public.member`,
-				args: []
-			};
-		}}
-	}
-
-}
-
 export class member {
 
 	static props = {
@@ -63,7 +33,7 @@ export class member {
 		}},
 
 		// return everyone! (but it may be shadowed by parent)
-		everyone: {type: 'array', of:'member', query:function(){
+		everyone: {type: 'array', of:member, query:function(){
 			return [`
 				select * from member
 			`];
@@ -89,7 +59,7 @@ export class member {
 export class email {
 
 	static props = {
-		member_id:           {type: 'uuid', ref: 'member'},
+		member_id:           {type: 'uuid', ref: member},
 		addr:                {type: 'text', unique:true}
 	}
 
@@ -107,8 +77,8 @@ export class email {
 
 export class friend {
 	static props = {
-		member_1_id: {type: 'uuid', ref:'member'},
-		member_2_id: {type: 'uuid', ref:'member'},
+		member_1_id: {type: 'uuid', ref:member},
+		member_2_id: {type: 'uuid', ref:member},
 	}
 
 	static indexes = {
@@ -124,3 +94,34 @@ export class friend {
 		}
 	}
 }
+
+export class root {
+
+	static props = {
+		me: {type: member, query: function(){
+			return [`select * from member where id = $1`, this.session.id];
+		}},
+
+		members: {type: 'array', of: member, query: function(){
+			return `select * from member`;
+		}},
+
+		email_addresses: {type: 'array', of: email, query: function(){
+			return `select * from email`;
+		}},
+
+		numbers: {type:'array', of:'int', query: function(){
+			return `select * from unnest(ARRAY[10,5,11])`;
+		}},
+
+		shadowed_members: {type: 'array', of:member, query: function(){
+			return {
+				with: `member as (select id,username from member where length(username) < 4)`,
+				query: `select * from public.member`,
+				args: []
+			};
+		}}
+	}
+
+}
+

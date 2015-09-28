@@ -74,6 +74,30 @@ class MutationError extends Error {
 		});
 	}
 
+	// Convert type klass to pg type string
+	function typeToString(t){
+		if( typeof t == 'string' ){
+			return t;
+		}
+		if( t === String ){
+			return 'text';
+		}
+		if( t === Number ){
+			return 'float';
+		}
+		if( t === Date ){
+			return 'timestamptz';
+		}
+		if( typeof t != 'function' || !t.name ){
+			throw new UserError(`invalid type for property: ${t}`);
+		}
+		if( !schema[t.name] ){
+			define(t.name, t);
+		}
+		return t.name;
+	}
+
+	// build column definition
 	function col({type = 'text', nullable = false, def = undefined, pk = false, onDelete = 'CASCADE', onUpdate = 'RESTRICT', ref} = {}) {
 		if( type == 'timestamp' ){
 			console.warn('there are issues with the timestamp type it is recordmend you use timestamptz');
@@ -108,9 +132,11 @@ class MutationError extends Error {
 	}
 
 	function define(name, klass){
-		if( !klass.name ){
-			// klass.name = name;
+		if( schema[name] ){
+			console.warn(`entity type ${name} is already defined`);
+			return;
 		}
+		schema[name] = klass;
 		if( !klass.props ){
 			throw UserError('class '+klass.name+' has no props');
 		}
@@ -124,6 +150,13 @@ class MutationError extends Error {
 			}
 			if(!prop.type){
 				prop.type = 'text';
+			}
+			prop.type = typeToString(prop.type);
+			if( prop.of ){
+				prop.of = typeToString(prop.of);
+			}
+			if( prop.ref ){
+				prop.ref = typeToString(prop.ref);
 			}
 			prop.name = k;
 			prop.klass = klass;
@@ -143,25 +176,30 @@ class MutationError extends Error {
 			return props;
 		},[]);
 
-		let alter = function(stmt){
+		// Add a DDL stmt to be executed during startup.
+		// Priority sets the order of the statement.
+		let alter = function(stmt, priority){
 			if(name != 'root'){
-				ddl.push(stmt);
+				ddl.push({
+					priority:priority || 0,
+					stmt: stmt,
+				});
 			}
 		};
 		alter(`CREATE TABLE ${ plv8.quote_ident(name) } ()`);
-		alter(`CREATE TRIGGER before_trigger BEFORE INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('before')`);
-		alter(`CREATE CONSTRAINT TRIGGER after_trigger AFTER INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('after')`);
+		alter(`CREATE TRIGGER before_trigger BEFORE INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('before')`, 10);
+		alter(`CREATE CONSTRAINT TRIGGER after_trigger AFTER INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('after')`, 10);
 		columns.forEach(function(p){
-			alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(p.name) } ${ col(p) }`);
+			alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(p.name) } ${ col(p) }`, 2);
 			if(p.unique){
-				alter(`CREATE UNIQUE INDEX ${ name }_${ p.name }_unq_idx ON ${ plv8.quote_ident(name) } (${ p.name })`);
+				alter(`CREATE UNIQUE INDEX ${ name }_${ p.name }_unq_idx ON ${ plv8.quote_ident(name) } (${ p.name })`, 3);
 			}
 		});
 		if( klass.indexes ){
 			for(let k in klass.indexes){
 				let idx = klass.indexes[k];
 				let using = idx.using ? `USING ${ idx.using }` : '';
-				alter(`CREATE ${ idx.unique ? 'UNIQUE' : '' } INDEX ${ name }_${ k }_idx ON ${ plv8.quote_ident(name) } ${ using } ( ${ idx.on.map(c => plv8.quote_ident(c) ).join(',') } )` );
+				alter(`CREATE ${ idx.unique ? 'UNIQUE' : '' } INDEX ${ name }_${ k }_idx ON ${ plv8.quote_ident(name) } ${ using } ( ${ idx.on.map(c => plv8.quote_ident(c) ).join(',') } )`, 3);
 			}
 		}
 		let kp = klass.prototype;
@@ -189,7 +227,6 @@ class MutationError extends Error {
 		if( kp.afterDelete ){
 			addListener('after','delete', klass, kp.afterDelete);
 		}
-		schema[name] = klass;
 	}
 
 	function userValue(v, args) {
@@ -708,8 +745,11 @@ class MutationError extends Error {
 
 	// init will only ever run once
 	arla.init = function(){
-		ddl.forEach(function(stmt){
-			db.query(stmt);
+		ddl = ddl.sort(function(a,b){
+			return a.priority - b.priority;
+		});
+		ddl.forEach(function(ddl){
+			db.query(ddl.stmt);
 		});
 	};
 
