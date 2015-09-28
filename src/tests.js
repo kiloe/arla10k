@@ -1,7 +1,7 @@
 var alice, bob, jeff, kate;
 
 function createMember( o ) {
-	var id = q( 'select create_member(uuid_generate_v4(), $1) as id', o.email )[ 0 ].id;
+	var id = q( 'select create_member(gen_random_uuid(), $1) as id', o.email )[ 0 ].id;
 	delete o.email;
 	for ( let k in o ) {
 		q( `update member set ${ k } = $1 where id = $2`, o[ k ], id );

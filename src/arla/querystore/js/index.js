@@ -108,12 +108,14 @@ class MutationError extends Error {
 	}
 
 	function define(name, klass){
-		klass.name = name;
+		if( !klass.name ){
+			// klass.name = name;
+		}
 		if( !klass.props ){
 			throw UserError('class '+klass.name+' has no props');
 		}
 		if( !klass.props.id ){
-			klass.props.id = {type:'uuid', pk:true, def:'uuid_generate_v4()'};
+			klass.props.id = {type:'uuid', pk:true, def:'gen_random_uuid()'};
 		}
 		let columns = Object.keys(klass.props).reduce(function(props, k){
 			let prop = klass.props[k];

@@ -7,11 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
-	"os/user"
-	"strconv"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -174,10 +172,38 @@ func (p *postgres) Register(vals string) (*schema.Mutation, error) {
 	return &m, nil
 }
 
+// Copy the config files into the data dir
+func (p *postgres) cpConfig(name string) (err error) {
+	dataDir := os.Getenv("PGDATA")
+	src := filepath.Join(dataDir, "..", name)
+	fmt.Println("COPY", src, dataDir)
+	err = p.run("cp", "-f", src, dataDir)
+	if err != nil {
+		return fmt.Errorf("failed to install %s: %v", name, err)
+	}
+	return nil
+}
+
+func (p *postgres) initdb() (err error) {
+	err = p.run("initdb", "--nosync", "--noclean")
+	if err != nil {
+		return err
+	}
+	err = p.cpConfig("postgresql.conf")
+	if err != nil {
+		return err
+	}
+	err = p.cpConfig("pg_hba.conf")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // Start spawns a postgres instance, configures it using the
 // supplied actions.js and schema.js paths and creates a connection pool.
 func (p *postgres) Start() (err error) {
-	p.quit = make(chan error)
+	p.quit = make(chan error, 1)
 	p.pgcfg, err = pgx.ParseEnvLibpq()
 	if err != nil {
 		return
@@ -185,6 +211,9 @@ func (p *postgres) Start() (err error) {
 	p.pgcfg.User = "postgres"
 	p.pgcfg.Database = "arla"
 	p.pgcfg.Host = "/var/run/postgresql/"
+	if err = p.initdb(); err != nil {
+		return
+	}
 	if err = p.spawn(); err != nil {
 		return
 	}
@@ -216,12 +245,12 @@ func (p *postgres) NewWriter() (w io.WriteCloser, err error) {
 }
 
 func (p *postgres) Wait() error {
-	<-p.quit
-	return nil
+	err := <-p.quit
+	return err
 }
 
 func (p *postgres) spawn() (err error) {
-	p.cmd, err = p.command("pg_ctlcluster", "--foreground", "9.4", "main", "start")
+	p.cmd, err = p.command("postgres", "-k", "/var/run/postgresql")
 	if err != nil {
 		return err
 	}
@@ -231,7 +260,8 @@ func (p *postgres) spawn() (err error) {
 		return err
 	}
 	go func() {
-		p.cmd.Process.Wait()
+		_, err := p.cmd.Process.Wait()
+		p.quit <- err
 		close(p.quit)
 	}()
 	// wait until responsive
@@ -241,6 +271,11 @@ func (p *postgres) spawn() (err error) {
 	case <-time.After(10 * time.Second):
 		p.Stop()
 		return errors.New("timeout waiting for postgres to start accepting connections")
+	case err, ok := <-p.quit:
+		if ok && err != nil {
+			return fmt.Errorf("failed to start postgres: %v", err)
+		}
+		return errors.New("postgres progress exited during startup")
 	}
 	// init
 	return p.init()
@@ -248,16 +283,12 @@ func (p *postgres) spawn() (err error) {
 
 // command is exec.Command but preconfigured for postgres user and always
 // looks up first argument using LookPath
-func (p *postgres) command(name string, args ...string) (*exec.Cmd, error) {
-	pgUser, err := user.Lookup("postgres")
+func (p *postgres) command(name string, args ...string) (cmd *exec.Cmd, err error) {
+	uid, err := getUid("postgres")
 	if err != nil {
 		return nil, err
 	}
-	uid, err := strconv.ParseUint(pgUser.Uid, 10, 32)
-	if err != nil {
-		return nil, err
-	}
-	gid, err := strconv.ParseUint(pgUser.Gid, 10, 32)
+	gid, err := getGid("postgres")
 	if err != nil {
 		return nil, err
 	}
@@ -265,16 +296,18 @@ func (p *postgres) command(name string, args ...string) (*exec.Cmd, error) {
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(exe, args...)
+	cmd = exec.Command(exe, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}
+	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uid, Gid: gid}
+	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uid, Gid: gid}
 	cmd.Stdout = devNull
 	cmd.Stderr = devNull
 	cmd.Env = append(os.Environ(), []string{
 		"PGUSER=postgres",
 		"PGDATABASE=arla",
+		"PGHOST=/var/run/postgresql",
 	}...)
-	return cmd, nil
+	return
 }
 
 // run is a shortcut for p.command + start + wait
@@ -294,15 +327,17 @@ func (p *postgres) run(exe string, args ...string) error {
 
 // forForReady returns a channel that signals when daemon is up
 func (p *postgres) pollForReady() <-chan (bool) {
+	fmt.Printf("starting postgres..")
 	ch := make(chan (bool))
 	go func() {
 		for {
 			time.Sleep(500 * time.Millisecond)
 			if err := p.run("pg_isready", "-d", "postgres"); err != nil {
-				log.Println(err)
+				fmt.Printf(".")
 				continue
 			}
 			ch <- true
+			fmt.Printf("...ready\n")
 			break
 		}
 	}()
@@ -320,7 +355,7 @@ func (p *postgres) init() error {
 	// compile js
 	cmd, err := p.command("browserify",
 		p.cfg.Path, "-t", "[",
-		"/usr/local/lib/node_modules/babelify",
+		"/usr/lib/node_modules/babelify",
 		"--modules", "common",
 		"--stage", "0",
 		"]")
@@ -345,8 +380,8 @@ func (p *postgres) init() error {
 		return err
 	}
 	cmd.Stdin = strings.NewReader(sql)
-	//cmd.Stderr = p.log // wire up client output to server logs
-	//cmd.Stdout = p.log // wire up client output to server logs
+	cmd.Stderr = p.log // wire up client output to server logs
+	cmd.Stdout = p.log // wire up client output to server logs
 	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to initialize arla: %s", err)

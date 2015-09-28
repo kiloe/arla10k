@@ -1,8 +1,12 @@
 FROM arla/base
 EXPOSE 80
-ENTRYPOINT ["/usr/bin/arla"]
-RUN mkdir -p /var/state && mkdir -p /app
-COPY src/arla/querystore/conf/postgresql.conf /etc/postgresql/9.4/main/postgresql.conf
-COPY src/arla/querystore/conf/pg_hba.conf /etc/postgresql/9.4/main/pg_hba.conf
-COPY bin/arla /usr/bin/
+COPY src/arla/querystore/conf/postgresql.conf /var/lib/postgresql/postgresql.conf
+COPY src/arla/querystore/conf/pg_hba.conf /var/lib/postgresql/pg_hba.conf
+COPY bin/arla /bin/arla
+RUN mkdir -p /var/state \
+	&& mkdir -p /app \
+	&& chown -R postgres:postgres /var/lib/postgresql \
+	&& mkdir -p /var/run/postgresql/stats \
+	&& chown -R postgres:postgres /var/run/postgresql
 WORKDIR /app
+ENTRYPOINT ["/bin/arla"]

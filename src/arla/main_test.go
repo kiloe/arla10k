@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -587,8 +588,14 @@ func TestInfo(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
+	// create a tmp dir
+	tmp, err := ioutil.TempDir("", "arlatestdata")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer os.RemoveAll(tmp)
 	// write a mutation log
-	f, err := os.Create("/tmp/datastore")
+	f, err := os.Create(filepath.Join(tmp, "datastore"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -605,8 +612,8 @@ func TestMain(m *testing.M) {
 	}
 	// start server
 	server := New(Config{
-		ConfigPath: "/app/test-app/config.js",
-		DataDir:    "/tmp/",
+		ConfigPath: "test-app/config.js",
+		DataDir:    tmp,
 		Secret:     "mysecret",
 		Debug:      true,
 	})
