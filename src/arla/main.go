@@ -280,6 +280,16 @@ func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request, t schema.T
 	return nil
 }
 
+// enableCORS sets headers to allow CORS.
+// XXX: by default we allow CORS requests ... but there should be a way to configure it.
+func (s *Server) enableCORS(w http.ResponseWriter, r *http.Request) {
+	if origin := r.Header.Get("Origin"); origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+	}
+}
+
 // addHandler attaches a HandleFunc to the http server.
 func (s *Server) addHandler(path string, fn HandlerFunc) {
 	s.mux.HandleFunc(path, s.wrapHandler(fn))
@@ -296,6 +306,11 @@ func (s *Server) wrapHandler(fn HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// set default response type
 		w.Header().Set("Content-Type", ApplicationJSON)
+		// enable CORS
+		s.enableCORS(w, r)
+		if r.Method == "OPTIONS" {
+			return
+		}
 		// call handler
 		if err := fn(w, r); err != nil {
 			// handle errors
