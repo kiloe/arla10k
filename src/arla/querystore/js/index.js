@@ -754,6 +754,12 @@ class MutationError extends Error {
 		if( !stmts ){
 			return;
 		}
+		if( typeof stmts == 'string' ){
+			stmts = [stmts];
+		}
+		if( !Array.isArray(stmts) ){
+			throw new UserError(`bootstrap should be an array of SQL statements`);
+		}
 		stmts.forEach(function(stmt){
 			let args = stmt;
 			if( !Array.isArray(args) ){
