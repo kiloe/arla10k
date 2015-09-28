@@ -540,6 +540,23 @@ func TestAPI(t *testing.T) {
 
 	// -----------------------------
 
+	// Country data should be populated from bootstrap statement
+	bob.Query(`
+		countries(){
+			name
+			code
+		}
+	`).ShouldReturn(`
+		{
+			"countries": [
+				{"name":"United Kingdom", "code":"GB"},
+				{"name":"France", "code":"FR"}
+			]
+		}
+	`)
+
+	// -----------------------------
+
 	// alice should be indestructable
 	alice.Exec("destroyMember").ShouldFail()
 

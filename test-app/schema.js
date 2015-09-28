@@ -95,6 +95,13 @@ export class friend {
 	}
 }
 
+export class country {
+	static props = {
+		name: {type: String},
+		code: {type: String},
+	}
+}
+
 export class root {
 
 	static props = {
@@ -120,6 +127,10 @@ export class root {
 				query: `select * from public.member`,
 				args: []
 			};
+		}},
+
+		countries: {type: Array, of: country, query: function(){
+			return `select * from country`;
 		}}
 	}
 

@@ -56,5 +56,15 @@ arla.configure({
 		}
 		return Object.assign(m, {version: targetVersion});
 	},
+	// bootstrap is an optional array of SQL statements to execute before any
+	// mutations are replayed.
+	// This allows you to setup the database, install extensions and setup any
+	// required data (like the initial users).
+	// Note: it's a fair bit slower than replaying mutations, so don't go nuts or
+	// you risk increasing app startup time.
+	bootstrap: [
+		`insert into country (name,code) values ('United Kingdom', 'GB')`,
+		[`insert into country (name,code) values ($1, $2)`, 'France', 'FR'],
+	],
 
 });

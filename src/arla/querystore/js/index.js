@@ -88,6 +88,9 @@ class MutationError extends Error {
 		if( t === Date ){
 			return 'timestamptz';
 		}
+		if( t === Array ){
+			return 'array';
+		}
 		if( typeof t != 'function' || !t.name ){
 			throw new UserError(`invalid type for property: ${t}`);
 		}
@@ -154,6 +157,9 @@ class MutationError extends Error {
 			prop.type = typeToString(prop.type);
 			if( prop.of ){
 				prop.of = typeToString(prop.of);
+				if( prop.of == 'array' ){
+					throw new UserError(`'of' cannot be 'array'`);
+				}
 			}
 			if( prop.ref ){
 				prop.ref = typeToString(prop.ref);
@@ -743,7 +749,21 @@ class MutationError extends Error {
 		return arla.cfg.register(values);
 	};
 
-	// init will only ever run once
+	// init calls boostrap during app startup
+	arla.bootstrap = function(stmts){
+		if( !stmts ){
+			return;
+		}
+		stmts.forEach(function(stmt){
+			let args = stmt;
+			if( !Array.isArray(args) ){
+				args = [args];
+			}
+			db.query.apply(db, args);
+		});
+	};
+
+	// init will only ever run once on app startup
 	arla.init = function(){
 		ddl = ddl.sort(function(a,b){
 			return a.priority - b.priority;
@@ -751,6 +771,7 @@ class MutationError extends Error {
 		ddl.forEach(function(ddl){
 			db.query(ddl.stmt);
 		});
+		arla.bootstrap(arla.cfg.bootstrap);
 	};
 
 	// configure will be run everytime a js context is started
