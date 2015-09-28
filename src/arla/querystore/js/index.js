@@ -91,6 +91,9 @@ class MutationError extends Error {
 		if( t === Array ){
 			return 'array';
 		}
+		if( t === Boolean ){
+			return 'boolean';
+		}
 		if( typeof t != 'function' || !t.name ){
 			throw new UserError(`invalid type for property: ${t}`);
 		}
@@ -289,8 +292,18 @@ class MutationError extends Error {
 				}
 				if( typeof a[n] == 'undefined' ){
 					console.warn(`placeholder variable ${n} is undefined in query for ${klass.name} ${property.name}`);
+					return 'NULL';
 				}
-				if( a[n] && cxtReverse[a[n]] ){
+				else if( typeof a[n] == 'boolean' ){
+					return a[n].toString();
+				}
+				else if( typeof a[n] == 'number' ){
+					return a[n].toString();
+				}
+				else if( a[n] instanceof Date ){
+					return plv8.quote_literal(a[n]) + '::timestamptz';
+				}
+				else if( a[n] && cxtReverse[a[n]] ){
 					return a[n];
 				}
 				return plv8.quote_literal(a[n]);

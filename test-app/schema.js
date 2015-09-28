@@ -129,8 +129,14 @@ export class root {
 			};
 		}},
 
+		// country data is populated in arla.configure via bootstrap
 		countries: {type: Array, of: country, query: function(){
 			return `select * from country`;
+		}},
+
+		// someflag should be set from the authentication function in arla.configure
+		someflag: {type: Boolean, query: function(){
+			return [`select $1`, this.session.someflag];
 		}}
 	}
 

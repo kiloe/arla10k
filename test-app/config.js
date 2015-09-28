@@ -14,7 +14,10 @@ arla.configure({
 	// context/claims/session for future requests
 	authenticate({username, password}){
 		return [`
-			select id from member
+			select
+				id,
+				true as someflag
+			from member
 			where username = $1
 			and password = crypt($2, password)
 		`, username, password];

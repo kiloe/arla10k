@@ -557,6 +557,17 @@ func TestAPI(t *testing.T) {
 
 	// -----------------------------
 
+	// Someflag should be set in authenticate and stored in the session token
+	bob.Query(`
+		someflag
+	`).ShouldReturn(`
+		{
+			"someflag": true
+		}
+	`)
+
+	// -----------------------------
+
 	// alice should be indestructable
 	alice.Exec("destroyMember").ShouldFail()
 

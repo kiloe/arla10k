@@ -352,12 +352,7 @@ func (s *Server) wrapAuthenticatedHandler(fn AuthenticatedHandlerFunc) HandlerFu
 			}
 			return authError(fmt.Errorf("invalid token"))
 		}
-		t := make(schema.Token)
-		for k, v := range token.Claims {
-			if s, ok := v.(string); ok {
-				t[k] = s
-			}
-		}
+		t := schema.Token(token.Claims)
 		return fn(w, r, t)
 	}
 }

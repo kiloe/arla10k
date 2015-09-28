@@ -29,7 +29,7 @@ type Query struct {
 type Arg interface{}
 
 // Token contains the validated claims that a user/session has.
-type Token map[string]string
+type Token map[string]interface{}
 
 // SafeError is an error that has a way to return a public-facing error message.
 // The perpose is to prevent any potentially sensitive infomation from leaking

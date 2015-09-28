@@ -151,7 +151,7 @@ func (p *postgres) Authenticate(vals string) (schema.Token, error) {
 	if err := r.Scan(&s); err != nil {
 		return nil, err
 	}
-	t := make(schema.Token)
+	t := schema.Token{}
 	if err := json.Unmarshal([]byte(s), &t); err != nil {
 		return nil, err
 	}
