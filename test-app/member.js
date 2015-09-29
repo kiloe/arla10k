@@ -37,12 +37,10 @@ export default class member extends arla.Entity {
 			return [`select upper(username) from member where id = $1`, this.id];
 		}},
 
-		// return everyone! (but it may be shadowed by parent)
-		everyone: {type: 'array', of:member, query:function(){
-			return [`
-				select * from member
-			`];
-		}}
+		shadowed_members: {type: 'array', of:member, query: function(){
+			return `select * from shadowed_members`;
+		}},
+
 	}
 
 	// after update or insert trigger

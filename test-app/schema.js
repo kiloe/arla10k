@@ -29,6 +29,10 @@ export class root extends arla.Entity {
 		country
 	}
 
+	static with(){
+		return [`shadowed_members as (select id,username from member where length(username) < 4)`];
+	}
+
 	static props = {
 		me: {type: member, query: function(){
 			return [`select * from ${member} where id = $1`, this.session.id];
@@ -44,14 +48,6 @@ export class root extends arla.Entity {
 
 		numbers: {type:'array', of:'int', query: function(){
 			return `select * from unnest(ARRAY[10,5,11])`;
-		}},
-
-		shadowed_members: {type: 'array', of:member, query: function(){
-			return {
-				with: `member as (select id,username from member where length(username) < 4)`,
-				query: `select * from public.${member}`,
-				args: []
-			};
 		}},
 
 		// country data is populated in arla.configure via bootstrap

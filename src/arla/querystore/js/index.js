@@ -268,6 +268,36 @@ class MutationError extends Error {
 		return plv8.quote_literal(v.value);
 	}
 
+	// variable interpolation
+	// converts ["sql with $1 $2", arg1, arg2] => "sql with x y"
+	function interpolate(a, cxtReverse){
+		return a[0].replace(/\$(\d+)/g, function(match, ns){
+			let n = parseInt(ns,10);
+			if( n <= 0 ){
+				throw new UserError(`invalid placeholder name: \$${ns}`);
+			}
+			if( a.length-1 < n ){
+				throw new UserError(`no variable for placeholder: \$${ns}`);
+			}
+			if( typeof a[n] == 'undefined' ){
+				throw new UserError(`placeholder variable ${n} is undefined`);
+			}
+			else if( typeof a[n] == 'boolean' ){
+				return a[n].toString();
+			}
+			else if( typeof a[n] == 'number' ){
+				return a[n].toString();
+			}
+			else if( a[n] instanceof Date ){
+				return plv8.quote_literal(a[n]) + '::timestamptz';
+			}
+			else if( a[n] && cxtReverse[a[n]] ){
+				return a[n];
+			}
+			return plv8.quote_literal(a[n]);
+		});
+	};
+
 	// returns an SQL select with (single row single column)
 	function sqlForProperty(klass, session, ast, vars=[], i=0){
 		// fetch requested property
@@ -293,36 +323,6 @@ class MutationError extends Error {
 				property: property.name,
 				type: property.type,
 				kind: klass.name,
-			});
-		};
-		// variable interpolation
-		// converts ["sql with $1 $2", arg1, arg2] => "sql with x y"
-		let interpolate = function(a){
-			return a[0].replace(/\$(\d+)/g, function(match, ns){
-				let n = parseInt(ns,10);
-				if( n <= 0 ){
-					throw new UserError(`invalid placeholder name: \$${ns}`);
-				}
-				if( a.length-1 < n ){
-					throw new UserError(`no variable for placeholder: \$${ns}`);
-				}
-				if( typeof a[n] == 'undefined' ){
-					console.warn(`placeholder variable ${n} is undefined in query for ${klass.name} ${property.name}`);
-					return 'NULL';
-				}
-				else if( typeof a[n] == 'boolean' ){
-					return a[n].toString();
-				}
-				else if( typeof a[n] == 'number' ){
-					return a[n].toString();
-				}
-				else if( a[n] instanceof Date ){
-					return plv8.quote_literal(a[n]) + '::timestamptz';
-				}
-				else if( a[n] && cxtReverse[a[n]] ){
-					return a[n];
-				}
-				return plv8.quote_literal(a[n]);
 			});
 		};
 		// simple property fetch
@@ -361,7 +361,7 @@ class MutationError extends Error {
 				if( typeof sql.with != 'string' ){
 					err(`${klass.name}.${property.name} did not return a valid sql query object: expected 'with' to be a string`);
 				}
-				shadow = interpolate([sql.with].concat(args));
+				shadow = interpolate([sql.with].concat(args), cxtReverse);
 			}
 			// ensure query part is correct
 			if( !sql.query || typeof sql.query != 'string' ){
@@ -372,7 +372,7 @@ class MutationError extends Error {
 		}
 		// interpolate any variables into the sql to convert to string
 		if( Array.isArray(sql) ){
-			sql = interpolate(sql);
+			sql = interpolate(sql, cxtReverse);
 		}
 		if( typeof sql != 'string' ){
 			err(`${klass.name}.${property.name} did not return a valid sql query: expected sql to be a string got: ${typeof sql}`);
@@ -553,13 +553,30 @@ class MutationError extends Error {
 
 	// returns an SQL select with (multi row multi column)
 	function sqlForClass(klass, session, ast, vars=[], i=0){
-		return 'select ' + ast.props.map(function(p){
+		let sql = 'select ' + ast.props.map(function(p){
 			return sqlForProperty(klass, session, p, vars, i) + ` as ${p.alias}`;
 		}).join(',');
+		// if the class specifies a 'with' function then the sql will be
+		// prepended with the 'with' statement
+		if( klass.with ){
+			if( typeof klass.with != 'function' ){
+				throw new UserError(`'with' must be a function`);
+			}
+			let a = klass.with.apply(session, []);
+			if( typeof a == 'string' ){
+				a = [a];
+			}
+			if( !a || !Array.isArray(a) ){
+				throw new UserError(`invalid return from with function for ${klass.name}`);
+			}
+			let withSql = interpolate(a, {});
+			sql = `with ${withSql} (${sql})`;
+		}
+		return sql;
 	}
 
 	// hash of property signature
-	// FIXME: naive
+	// XXX: naive
 	function sig(p){
 		return JSON.stringify({
 			name: p.name,

@@ -321,41 +321,25 @@ func TestAPI(t *testing.T) {
 
 	// -------------------------------------
 
-	// test shadowing
-
-	// sanity test first
+	// test global CTE
+	//
+	// the call to shaowed_members() should only return members with
+	// username.length < 4 ... even tho the SQL just says "select * from shadowed_members"
+	// this is because the root() call declares a `with` CTE that is inserted into the query
 	alice.Query(`
-		shadowed_members(){
-			username
+		members().first(){
+			shadowed_members(){
+				username
+			}
 		}
 
 	`).ShouldReturn(`
 		{
-			"shadowed_members": [
-				{"username":"alice"},
-				{"username":"bob"},
-				{"username":"kate"}
-			]
-		}
-	`)
-	// the call the everyone() should only return members with
-	// username.length < 4 ... even tho the SQL just says "select * from memeber"
-	// this is because the shadow_memebers() call declares CTEs that override
-	// the default table names.... it's a very useful way of ensuring permissions by
-	// declaring everything that is "visible" from the the "viewer" node as CTEs
-	// then using SQL throughout the other nodes
-	alice.Query(`
-		shadowed_members(){
-			everyone(){username}
-		}
-
-	`).ShouldReturn(`
-		{
-			"shadowed_members": [
-				{"everyone": [{"username":"bob"}]},
-				{"everyone": [{"username":"bob"}]},
-				{"everyone": [{"username":"bob"}]}
-			]
+			"members": {
+				"shadowed_members": [
+					{"username":"bob"}
+				]
+			}
 		}
 	`)
 
