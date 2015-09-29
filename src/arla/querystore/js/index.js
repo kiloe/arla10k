@@ -123,18 +123,19 @@ class MutationError extends Error {
 		if( !nullable ){
 			x.push('NOT NULL');
 		}
-		if( def === undefined ){
+		if( def === undefined && !nullable ){
 			switch(type){
-				case 'boolean':   def = 'false';   break;
-				case 'json':      def = '\'{}\'';    break;
-				case 'timestampz':def = 'now()';   break;
+				case 'text':      def = `''`;      break;
+				case 'boolean':   def = `false`;   break;
+				case 'json':      def = `'{}'`;    break;
+				case 'timestampz':def = `now()`;   break;
 				default:          def = null;      break;
 			}
 		}
 		if( pk ){
 			x.push('PRIMARY KEY');
 		}
-		if( def !== null ){
+		if( def !== null && def !== undefined ){
 			x.push(`DEFAULT ${ def }`);
 		}
 		return x.join(' ');
