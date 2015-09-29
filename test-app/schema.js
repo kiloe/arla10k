@@ -128,7 +128,7 @@ export class root extends arla.Entity {
 		}},
 
 		// country data is populated in arla.configure via bootstrap
-		countries: {type: Array, of: country, query: function(){
+		countries: {type: Array, of: 'country', query: function(){
 			return `select * from ${country}`;
 		}},
 

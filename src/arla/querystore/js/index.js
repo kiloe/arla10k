@@ -138,8 +138,10 @@ class MutationError extends Error {
 	}
 
 	function define(name, klass){
-		if( schema[name] && schema[name] != klass ){
-			console.warn(`entity type ${name} is already defined`);
+		if( schema[name] ){
+			if( schema[name] != klass ){
+				console.warn(`entity type ${name} is already defined`);
+			}
 			return;
 		}
 		schema[name] = klass;
