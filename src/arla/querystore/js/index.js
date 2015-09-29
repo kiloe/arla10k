@@ -128,6 +128,7 @@ class MutationError extends Error {
 				case 'text':      def = `''`;      break;
 				case 'boolean':   def = `false`;   break;
 				case 'json':      def = `'{}'`;    break;
+				case 'jsonb':     def = `'{}'`;    break;
 				case 'timestampz':def = `now()`;   break;
 				default:          def = null;      break;
 			}
@@ -296,7 +297,7 @@ class MutationError extends Error {
 			}
 			return plv8.quote_literal(a[n]);
 		});
-	};
+	}
 
 	// returns an SQL select with (single row single column)
 	function sqlForProperty(klass, session, ast, vars=[], i=0){
@@ -779,8 +780,13 @@ class MutationError extends Error {
 					message: e.message,
 					context: query
 				});
+			}else{
+				e = new QueryError({
+					message: e.message,
+					context: query
+				});
 			}
-			throw err;
+			throw e;
 		}
 		// console.debug('AST (raw):', ast);
 		ast.props = normalizeProps(ast.props);
