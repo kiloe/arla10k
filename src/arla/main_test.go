@@ -53,8 +53,8 @@ func TestAPI(t *testing.T) {
 	`)
 
 	// execute mutation to add an email_address record
-	bob.Exec("addEmailAddress", "bob@bob.com").ShouldSucceed()
-	bob.Exec("addEmailAddress", "bob@bob.com").ShouldFail() // already exists
+	bob.Exec("addEmailAddress", "83d6e614-b12c-4a24-b1a3-efbd35c34ad8", "bob@bob.com").ShouldSucceed()
+	bob.Exec("addEmailAddress", "55e33341-7c2d-4e8e-a01b-f45abd9ab57c", "bob@bob.com").ShouldFail() // already exists
 
 	// fetch email_address record via property
 	bob.Query(`
@@ -114,10 +114,10 @@ func TestAPI(t *testing.T) {
 	`)
 
 	// beforeChange hook should cause email addr to get lowercased
-	alice.Exec("addEmailAddress", "      ALICE@ALICE.com ").ShouldSucceed()
+	alice.Exec("addEmailAddress", "da4b8dcc-b46d-422c-8c30-b8f9ff375c43", "      ALICE@ALICE.com ").ShouldSucceed()
 
 	// beforeChange hooks should prevent invalid emails
-	alice.Exec("addEmailAddress", "not-an-email").ShouldFail()
+	alice.Exec("addEmailAddress", "f7f44141-6e23-417b-abdd-5d1f840f97db", "not-an-email").ShouldFail()
 	alice.Exec("updateEmailAddress", "alice@alice.com", "not-an-email").ShouldFail()
 
 	// alice should just have a single (lowercase) email
@@ -236,9 +236,9 @@ func TestAPI(t *testing.T) {
 	// ----------------------------------------
 
 	// test relationships
-	alice.Exec("addFriend", bob.ID.String()).ShouldSucceed()
-	bob.Exec("addFriend", alice.ID.String()).ShouldFail() // already friends
-	kate.Exec("addFriend", alice.ID.String()).ShouldSucceed()
+	alice.Exec("addFriend", "c909d030-4289-4021-8aba-9d0ad0c0daae", bob.ID.String()).ShouldSucceed()
+	bob.Exec("addFriend", "9aeb2c32-0aea-4fcc-b850-8dbd13fac631", alice.ID.String()).ShouldFail() // already friends
+	kate.Exec("addFriend", "8f42bb10-eac9-4a68-8446-a8d21353e6ca", alice.ID.String()).ShouldSucceed()
 	alice.Query(`me(){friends().pluck(username)}`).ShouldReturn(`
 		{
 			"me":{

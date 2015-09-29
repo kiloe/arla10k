@@ -116,14 +116,14 @@ describe('client', function(){
     });
 
     it('should be able to exec addEmailAddress mutation for bob', function(done){
-      client.exec("addEmailAddress", "bob@bob.com").then(function(ok){
+      client.exec("addEmailAddress", "d79202c1-ce9f-4dfa-9a33-7b6387b49523", "bob@bob.com").then(function(ok){
         expect(ok).toBe(true);
         done();
       }).catch(done.fail);
     })
 
     it('should NOT be able to exec addEmailAddress mutation for bob (already exists)', function(done){
-      client.exec("addEmailAddress", "bob@bob.com").then(function(ok){
+      client.exec("addEmailAddress", "a351370c-096e-49d1-9098-6ffc684fa287", "bob@bob.com").then(function(ok){
         expect(ok).not.toBe(true);
         done.fail('expected addEmailAddress to fail (on this attempt)');
       }).catch(function(err){

@@ -154,7 +154,7 @@ class MutationError extends Error {
 			throw UserError('class '+klass.name+' has no props');
 		}
 		if( !klass.props.id ){
-			klass.props.id = {type:'uuid', pk:true, def:'gen_random_uuid()'};
+			klass.props.id = {type:'uuid', pk:true};
 		}
 		let columns = Object.keys(klass.props).reduce(function(props, k){
 			let prop = klass.props[k];

@@ -12,11 +12,11 @@ export function destroyMember() {
 	`, this.session.id];
 }
 
-export function addEmailAddress(addr) {
+export function addEmailAddress(id, addr) {
 	return [`
-		insert into email (member_id, addr)
-		values ($1, $2)
-	`, this.session.id, addr];
+		insert into email (member_id, addr, id)
+		values ($1, $2, $3)
+	`, this.session.id, addr, id];
 }
 
 export function updateEmailAddress(oldAddr, newAddr) {
@@ -26,11 +26,11 @@ export function updateEmailAddress(oldAddr, newAddr) {
 	`, newAddr, oldAddr, this.session.id];
 }
 
-export function addFriend(id) {
+export function addFriend(id, friend_id) {
 	return [`
-		insert into friend (member_1_id, member_2_id)
-		values ($1, $2)
-	`, this.session.id, id];
+		insert into friend (member_1_id, member_2_id, id)
+		values ($1, $2, $3)
+	`, this.session.id, friend_id, id];
 }
 
 export function exampleOp( a, b, c ) {

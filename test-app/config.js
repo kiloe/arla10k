@@ -66,8 +66,8 @@ arla.configure({
 	// Note: it's a fair bit slower than replaying mutations, so don't go nuts or
 	// you risk increasing app startup time.
 	bootstrap: [
-		`insert into country (name,code) values ('United Kingdom', 'GB')`,
-		[`insert into country (name,code) values ($1, $2)`, 'France', 'FR'],
+		`insert into country (id,name,code) values ('3161f6d4-36ad-4843-b7ef-fb7499affea5','United Kingdom', 'GB')`,
+		[`insert into country (id,name,code) values ('4216953e-9b6a-42cc-84b8-986c3978dc97',$1, $2)`, 'France', 'FR'],
 	],
 
 });
