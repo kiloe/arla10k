@@ -563,14 +563,16 @@ class MutationError extends Error {
 				throw new UserError(`'with' must be a function`);
 			}
 			let a = klass.with.apply(session, []);
-			if( typeof a == 'string' ){
-				a = [a];
+			if( a ){
+				if( typeof a == 'string' ){
+					a = [a];
+				}
+				if( !Array.isArray(a) ){
+					throw new UserError(`invalid return from 'with' function for ${klass.name}`);
+				}
+				let withSql = interpolate(a, {});
+				sql = `with ${withSql} (${sql})`;
 			}
-			if( !a || !Array.isArray(a) ){
-				throw new UserError(`invalid return from with function for ${klass.name}`);
-			}
-			let withSql = interpolate(a, {});
-			sql = `with ${withSql} (${sql})`;
 		}
 		return sql;
 	}
