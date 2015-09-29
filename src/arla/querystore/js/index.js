@@ -138,11 +138,16 @@ class MutationError extends Error {
 	}
 
 	function define(name, klass){
-		if( schema[name] ){
+		if( schema[name] && schema[name] != klass ){
 			console.warn(`entity type ${name} is already defined`);
 			return;
 		}
 		schema[name] = klass;
+		if( klass.requires ){
+			for(let req in klass.requires){
+				define(req, klass.requires[req]);
+			}
+		}
 		if( !klass.props ){
 			throw UserError('class '+klass.name+' has no props');
 		}

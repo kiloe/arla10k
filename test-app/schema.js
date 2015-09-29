@@ -95,14 +95,12 @@ export class friend extends arla.Entity {
 	}
 }
 
-export class country extends arla.Entity {
-	static props = {
-		name: {type: String},
-		code: {type: String},
-	}
-}
-
+import country from './country';
 export class root extends arla.Entity {
+
+	static requires = {
+		country
+	}
 
 	static props = {
 		me: {type: member, query: function(){
