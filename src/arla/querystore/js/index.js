@@ -76,6 +76,9 @@ class MutationError extends Error {
 
 	// Convert type klass to pg type string
 	function typeToString(t){
+		if( typeof t == 'undefined' ){
+			throw new UserError(`invalid type 'undefined'`);
+		}
 		if( typeof t == 'string' ){
 			return t;
 		}
@@ -138,6 +141,9 @@ class MutationError extends Error {
 	}
 
 	function define(name, klass){
+		if( !klass ){
+			throw new Error(`invalid class for ${name} ${typeof klass}`);
+		}
 		if( schema[name] ){
 			if( schema[name] != klass ){
 				console.warn(`entity type ${name} is already defined`);
@@ -158,7 +164,12 @@ class MutationError extends Error {
 		}
 		let columns = Object.keys(klass.props).reduce(function(props, k){
 			let prop = klass.props[k];
-			if(prop.ref && !prop.type){
+			prop.name = k;
+			if(prop.hasOwnProperty('ref')){
+				if( !prop.ref ){
+					throw new UserError(`invalid ref for property ${prop.name}: cannot be ${typeof prop.ref}`);
+				}
+				prop.ref = typeToString(prop.ref);
 				prop.type = 'uuid';
 			}
 			if(!prop.type){
@@ -171,10 +182,6 @@ class MutationError extends Error {
 					throw new UserError(`'of' cannot be 'array'`);
 				}
 			}
-			if( prop.ref ){
-				prop.ref = typeToString(prop.ref);
-			}
-			prop.name = k;
 			prop.klass = klass;
 			if(prop.query){
 				// add the magic _count property
@@ -206,7 +213,8 @@ class MutationError extends Error {
 		alter(`CREATE TRIGGER before_trigger BEFORE INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('before')`, 10);
 		alter(`CREATE CONSTRAINT TRIGGER after_trigger AFTER INSERT OR UPDATE OR DELETE ON ${ plv8.quote_ident(name) } DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE arla_fire_trigger('after')`, 10);
 		columns.forEach(function(p){
-			alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(p.name) } ${ col(p) }`, 2);
+			let priority = p.pk ? 1 : 2;
+			alter(`ALTER TABLE ${ plv8.quote_ident(name) } ADD COLUMN ${ plv8.quote_ident(p.name) } ${ col(p) }`, priority);
 			if(p.unique){
 				alter(`CREATE UNIQUE INDEX ${ name }_${ p.name }_unq_idx ON ${ plv8.quote_ident(name) } (${ p.name })`, 3);
 			}
