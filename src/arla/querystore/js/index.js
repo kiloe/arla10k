@@ -601,10 +601,11 @@ class MutationError extends Error {
 	}
 
 	// Entity is the class to extend to define schema entities/tables.
-	class Entity {}
-	Entity.toString = function(){
-		return this.name;
-	};
+	class Entity {
+		static toString(){
+			return this.name;
+		}
+	}
 	arla.Entity = Entity;
 
 	// trigger executes any before/after triggers defined on the entity
