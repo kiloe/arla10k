@@ -125,15 +125,15 @@ func NewLogFormatter(w io.Writer) *LogFormatter {
 						if end > len(src)-1 {
 							end = len(src) - 1
 						}
-						for i := start; i < end; i++ {
-							xtra := ""
-							col := ansi.White
-							if i == lineNo {
-								col = ansi.LightWhite
-								xtra = fmt.Sprint(ansi.Reset, ansi.Red, "<--- something wrong here", ansi.Reset)
-							}
-							fmt.Fprintln(&buf, ansi.Reset, col, src[i], ansi.Reset, xtra)
-						}
+						// for i := start; i < end; i++ {
+						// 	xtra := ""
+						// 	col := ansi.White
+						// 	if i == lineNo {
+						// 		col = ansi.LightWhite
+						// 		xtra = fmt.Sprint(ansi.Reset, ansi.Red, "<--- something wrong here", ansi.Reset)
+						// 	}
+						// 	fmt.Fprintln(&buf, ansi.Reset, col, src[i], ansi.Reset, xtra)
+						// }
 						line = buf.String()
 					}
 				}
