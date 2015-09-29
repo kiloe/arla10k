@@ -1,5 +1,5 @@
 
-export class member {
+export class member extends arla.Entity {
 
 	static props = {
 		// simple properties
@@ -56,7 +56,7 @@ export class member {
 
 }
 
-export class email {
+export class email extends arla.Entity {
 
 	static props = {
 		member_id:           {type: 'uuid', ref: member},
@@ -75,7 +75,7 @@ export class email {
 	}
 }
 
-export class friend {
+export class friend extends arla.Entity {
 	static props = {
 		member_1_id: {type: 'uuid', ref:member},
 		member_2_id: {type: 'uuid', ref:member},
@@ -95,26 +95,26 @@ export class friend {
 	}
 }
 
-export class country {
+export class country extends arla.Entity {
 	static props = {
 		name: {type: String},
 		code: {type: String},
 	}
 }
 
-export class root {
+export class root extends arla.Entity {
 
 	static props = {
 		me: {type: member, query: function(){
-			return [`select * from member where id = $1`, this.session.id];
+			return [`select * from ${member} where id = $1`, this.session.id];
 		}},
 
 		members: {type: 'array', of: member, query: function(){
-			return `select * from member`;
+			return `select * from ${member}`;
 		}},
 
 		email_addresses: {type: 'array', of: email, query: function(){
-			return `select * from email`;
+			return `select * from ${email}`;
 		}},
 
 		numbers: {type:'array', of:'int', query: function(){
@@ -124,14 +124,14 @@ export class root {
 		shadowed_members: {type: 'array', of:member, query: function(){
 			return {
 				with: `member as (select id,username from member where length(username) < 4)`,
-				query: `select * from public.member`,
+				query: `select * from public.${member}`,
 				args: []
 			};
 		}},
 
 		// country data is populated in arla.configure via bootstrap
 		countries: {type: Array, of: country, query: function(){
-			return `select * from country`;
+			return `select * from ${country}`;
 		}},
 
 		// someflag should be set from the authentication function in arla.configure
