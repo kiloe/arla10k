@@ -255,7 +255,7 @@ func (p *postgres) spawn() (err error) {
 	p.cmd, err = p.command(
 		"postgres",
 		"-k", "/var/run/postgresql",
-		"-c", fmt.Sprintf("max_connections=%d", p.maxConnections),
+		"-c", fmt.Sprintf("max_connections=%d", p.maxConnections+1),
 	)
 	if err != nil {
 		return err
