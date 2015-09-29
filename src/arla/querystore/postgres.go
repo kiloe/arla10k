@@ -87,6 +87,8 @@ type postgres struct {
 	log *LogFormatter
 	// user cfg
 	info *schema.Info
+	// max number of db connections
+	maxConnections int
 }
 
 func (p *postgres) SetLogLevel(level logLevel) {
@@ -223,7 +225,7 @@ func (p *postgres) Start() (err error) {
 	}
 	p.queryPool, err = pgx.NewConnPool(pgx.ConnPoolConfig{
 		ConnConfig:     p.pgcfg,
-		MaxConnections: 5,
+		MaxConnections: p.maxConnections,
 	})
 	if err != nil {
 		return
@@ -250,7 +252,11 @@ func (p *postgres) Wait() error {
 }
 
 func (p *postgres) spawn() (err error) {
-	p.cmd, err = p.command("postgres", "-k", "/var/run/postgresql")
+	p.cmd, err = p.command(
+		"postgres",
+		"-k", "/var/run/postgresql",
+		"-c", fmt.Sprintf("max_connections=%d", p.maxConnections),
+	)
 	if err != nil {
 		return err
 	}

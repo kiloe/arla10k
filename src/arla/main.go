@@ -43,6 +43,8 @@ type Config struct {
 	ListenAddr string `long:"listen-addr" description:"address and port to bind http server to" default:":80" required:"true" env:"ARLA_LISTEN_ADDR"`
 	// GraceDuration is the time allowed to finishing serving requests during shutdown
 	GraceDuration int `long:"grace-duration" description:"time allowed in seconds to finish serving requests during shutdown" default:"1" required:"true" env:"ARLA_GRACE_DURATION"`
+	// MaxConnections sets the number of database connections allowed
+	MaxConnections int `long:"max-connections" description:"max number of database connections" default:"100" required:"true" env:"ARLA_MAX_CONNECTIONS"`
 	// Debug enables debug log messages
 	Debug bool `long:"debug" description:"enable verbose debug error logging"`
 }
@@ -66,8 +68,9 @@ func (s *Server) startQueryEngine() (err error) {
 	}
 	// init query store
 	qscfg := &querystore.Config{
-		Path:     s.cfg.ConfigPath,
-		LogLevel: querystore.INFO,
+		Path:           s.cfg.ConfigPath,
+		MaxConnections: s.cfg.MaxConnections,
+		LogLevel:       querystore.INFO,
 	}
 	if s.cfg.Debug {
 		qscfg.LogLevel = querystore.DEBUG

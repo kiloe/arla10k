@@ -640,10 +640,11 @@ func TestMain(m *testing.M) {
 	}
 	// start server
 	server := New(Config{
-		ConfigPath: "test-app/config.js",
-		DataDir:    tmp,
-		Secret:     "mysecret",
-		Debug:      true,
+		ConfigPath:     "test-app/config.js",
+		DataDir:        tmp,
+		Secret:         "mysecret",
+		Debug:          true,
+		MaxConnections: 5,
 	})
 	if err := server.Start(); err != nil {
 		log.Fatal("failed to start server", err)

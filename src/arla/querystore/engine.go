@@ -23,15 +23,17 @@ type Engine interface {
 
 // Config defines options configuring the query engine
 type Config struct {
-	Path     string
-	LogLevel logLevel
+	Path           string
+	LogLevel       logLevel
+	MaxConnections int
 }
 
 // New creates a new query engine (which is always postgres at the moment)
 func New(cfg *Config) (e Engine, err error) {
 	p := &postgres{
-		cfg: cfg,
-		log: NewLogFormatter(os.Stderr),
+		cfg:            cfg,
+		log:            NewLogFormatter(os.Stderr),
+		maxConnections: cfg.MaxConnections,
 	}
 	p.SetLogLevel(cfg.LogLevel)
 	return p, p.Start()
