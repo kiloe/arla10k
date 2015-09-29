@@ -782,15 +782,15 @@ class MutationError extends Error {
 			}
 			throw err;
 		}
-		console.debug('AST (raw):', ast);
+		// console.debug('AST (raw):', ast);
 		ast.props = normalizeProps(ast.props);
-		console.debug('AST (normalized):', ast);
+		// console.debug('AST (normalized):', ast);
 		if( ast.name != 'root' ){
 			throw new QueryError({message:`expected root() property got ${ast.name}`});
 		}
 		let sql = sqlForClass(schema.root, token, ast, args);
 		let res = db.query(sql)[0];
-		console.debug('RESULT', res);
+		// console.debug('RESULT', res);
 		return res;
 	};
 
