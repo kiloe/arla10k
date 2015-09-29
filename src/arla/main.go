@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -315,13 +314,12 @@ func (s *Server) wrapHandler(fn HandlerFunc) http.HandlerFunc {
 		if err := fn(w, r); err != nil {
 			// handle errors
 			if s.cfg.Debug {
-				log.Println("DEBUG:", err.Error())
+				fmt.Fprintf(os.Stderr, "DEBUG: %v", err)
 			}
-			fmt.Println(err)
 			w.WriteHeader(err.code)
 			enc := json.NewEncoder(w)
 			if fatal := enc.Encode(err); fatal != nil {
-				log.Println("error during error handling: ", fatal.Error())
+				fmt.Fprintf(os.Stderr, "error during error handling: %v", fatal)
 				return
 			}
 		}
@@ -479,9 +477,11 @@ func New(cfg Config) *Server {
 func main() {
 	var cfg Config
 	if _, err := flags.ParseArgs(&cfg, os.Args); err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	if err := New(cfg).Run(); err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
