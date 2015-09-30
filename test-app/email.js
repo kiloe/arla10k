@@ -21,7 +21,7 @@ export default class email extends arla.Entity {
 		db.query(`
 			update member
 			set addrs = (
-				select array_agg(addr)
+				select json_agg(addr)::jsonb
 				from email
 				where member_id = $1
 			)

@@ -19,6 +19,7 @@ export default class member extends arla.Entity {
 		}},
 
 		// addrs will be precompputed onChange of email records
+		// when type=array is found on non-query columns it assumes a type of jsonb
 		addrs: {type: 'array', of: 'text'},
 
 		// self referencing many-to-many ... this could get real expensive real fast

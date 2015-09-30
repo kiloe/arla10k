@@ -97,6 +97,9 @@ class MutationError extends Error {
 		else if( t === Boolean ){
 			t = 'boolean';
 		}
+		else if ( t === Object ){
+			t = 'jsonb';
+		}
 		else if( typeof t == 'function' && t.name ){
 			if( !schema[t.name] ){
 				define(t.name, t);
@@ -110,7 +113,7 @@ class MutationError extends Error {
 	}
 
 	// build column definition
-	function col({type = 'text', nullable = false, def = undefined, pk = false, of = undefined, onDelete = 'CASCADE', onUpdate = 'RESTRICT', ref} = {}) {
+	function col({type = 'text', nullable = false, def = undefined, pk = false, onDelete = 'CASCADE', onUpdate = 'RESTRICT', ref} = {}) {
 		let t = type;
 		if( t == 'timestamp' ){
 			console.warn('there are issues with the timestamp type it is recordmend you use timestamptz');
@@ -119,12 +122,7 @@ class MutationError extends Error {
 			t = 'uuid';
 		}
 		if( t == 'array' ){
-			if( of ){
-				t = `${of}[]`;
-			}
-			else {
-				throw new UserError(`cannot use type 'array' without 'of'`);
-			}
+			t = 'jsonb';
 		}
 		var x = [t];
 		if( ref ){
@@ -136,18 +134,13 @@ class MutationError extends Error {
 			x.push('NOT NULL');
 		}
 		if( def === undefined && !nullable ){
-			if( type == 'array' ){
-				def = `ARRAY[]::${t}`;
-			}
-			else{
-				switch(t){
-					case 'text':      def = `''`;      break;
-					case 'integer':   def = `0`;       break;
-					case 'boolean':   def = `false`;   break;
-					case 'json':      def = `'{}'`;    break;
-					case 'jsonb':     def = `'{}'`;    break;
-					case 'timestampz':def = `now()`;   break;
-				}
+			switch(t){
+				case 'text':      def = `''`;                            break;
+				case 'integer':   def = `0`;                             break;
+				case 'boolean':   def = `false`;                         break;
+				case 'json':
+				case 'jsonb':     def = type=='array' ? `'[]'` : `'{}'`; break;
+				case 'timestampz':def = `now()`;                         break;
 			}
 		}
 		if( pk ){
