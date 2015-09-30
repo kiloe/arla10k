@@ -651,6 +651,9 @@ class MutationError extends Error {
 		static toString(){
 			return this.name;
 		}
+		query(sql, ...args){
+			return db.query(sql, ...args);
+		}
 	}
 	arla.Entity = Entity;
 
