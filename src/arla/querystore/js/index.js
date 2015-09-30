@@ -79,42 +79,54 @@ class MutationError extends Error {
 		if( typeof t == 'undefined' ){
 			throw new UserError(`invalid type 'undefined'`);
 		}
-		if( typeof t == 'string' ){
-			return t;
+		else if( typeof t == 'string' ){
+			t = t;
 		}
-		if( t === String ){
-			return 'text';
+		else if( t === String ){
+			t = 'text';
 		}
-		if( t === Number ){
-			return 'float';
+		else if( t === Number ){
+			t = 'float';
 		}
-		if( t === Date ){
-			return 'timestamptz';
+		else if( t === Date ){
+			t = 'timestamptz';
 		}
-		if( t === Array ){
-			return 'array';
+		else if( t === Array ){
+			t = 'array';
 		}
-		if( t === Boolean ){
-			return 'boolean';
+		else if( t === Boolean ){
+			t = 'boolean';
 		}
-		if( typeof t != 'function' || !t.name ){
+		else if( typeof t == 'function' && t.name ){
+			if( !schema[t.name] ){
+				define(t.name, t);
+			}
+			t = t.name;
+		}
+		else {
 			throw new UserError(`invalid type for property: ${t}`);
 		}
-		if( !schema[t.name] ){
-			define(t.name, t);
-		}
-		return t.name;
+		return t;
 	}
 
 	// build column definition
-	function col({type = 'text', nullable = false, def = undefined, pk = false, onDelete = 'CASCADE', onUpdate = 'RESTRICT', ref} = {}) {
-		if( type == 'timestamp' ){
+	function col({type = 'text', nullable = false, def = undefined, pk = false, of = undefined, onDelete = 'CASCADE', onUpdate = 'RESTRICT', ref} = {}) {
+		let t = type;
+		if( t == 'timestamp' ){
 			console.warn('there are issues with the timestamp type it is recordmend you use timestamptz');
 		}
-		if( !type && ref ){
-			type = 'uuid';
+		if( !t && ref ){
+			t = 'uuid';
 		}
-		var x = [type];
+		if( t == 'array' ){
+			if( of ){
+				t = `${of}[]`;
+			}
+			else {
+				throw new UserError(`cannot use type 'array' without 'of'`);
+			}
+		}
+		var x = [t];
 		if( ref ){
 			x.push(`REFERENCES ${ plv8.quote_ident(ref) }`);
 			x.push(`ON DELETE ${ onDelete }`);
@@ -124,13 +136,18 @@ class MutationError extends Error {
 			x.push('NOT NULL');
 		}
 		if( def === undefined && !nullable ){
-			switch(type){
-				case 'text':      def = `''`;      break;
-				case 'boolean':   def = `false`;   break;
-				case 'json':      def = `'{}'`;    break;
-				case 'jsonb':     def = `'{}'`;    break;
-				case 'timestampz':def = `now()`;   break;
-				default:          def = null;      break;
+			if( type == 'array' ){
+				def = `ARRAY[]::${t}`;
+			}
+			else{
+				switch(t){
+					case 'text':      def = `''`;      break;
+					case 'integer':   def = `0`;       break;
+					case 'boolean':   def = `false`;   break;
+					case 'json':      def = `'{}'`;    break;
+					case 'jsonb':     def = `'{}'`;    break;
+					case 'timestampz':def = `now()`;   break;
+				}
 			}
 		}
 		if( pk ){
@@ -177,13 +194,13 @@ class MutationError extends Error {
 			if(!prop.type){
 				prop.type = 'text';
 			}
-			prop.type = typeToString(prop.type);
 			if( prop.of ){
 				prop.of = typeToString(prop.of);
 				if( prop.of == 'array' ){
 					throw new UserError(`'of' cannot be 'array'`);
 				}
 			}
+			prop.type = typeToString(prop.type, prop.of);
 			prop.klass = klass;
 			if(prop.query){
 				// add the magic _count property

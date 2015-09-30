@@ -135,6 +135,17 @@ func TestAPI(t *testing.T) {
 		}
 	`)
 
+	// addrs should have been precomputed via the afterChange trigger on email
+	alice.Query(`
+		me(){addrs}
+	`).ShouldReturn(`
+		{
+			"me":{
+				"addrs": ["alice@alice.com"]
+			}
+		}
+	`)
+
 	// ----------------------------------------
 
 	// pluck should allow pulling a single property from members

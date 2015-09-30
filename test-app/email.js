@@ -16,4 +16,15 @@ export default class email extends arla.Entity {
 		}
 		this.addr = this.addr.toLowerCase().trim();
 	}
+
+	afterChange(){
+		db.query(`
+			update member
+			set addrs = (
+				select array_agg(addr)
+				from email
+				where member_id = $1
+			)
+		`, this.member_id);
+	}
 }

@@ -18,6 +18,9 @@ export default class member extends arla.Entity {
 			return [`select * from ${email} where member_id = $1`, this.id];
 		}},
 
+		// addrs will be precompputed onChange of email records
+		addrs: {type: 'array', of: 'text'},
+
 		// self referencing many-to-many ... this could get real expensive real fast
 		friends: {type: 'array', of: member, query: function(){
 			return [`
