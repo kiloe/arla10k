@@ -27,10 +27,10 @@ export function updateEmailAddress(oldAddr, newAddr) {
 }
 
 export function addFriend(friend_id) {
-	return [`
+	this.query(`
 		insert into friend (member_1_id, member_2_id)
 		values ($1, $2)
-	`, this.session.id, friend_id];
+	`, this.session.id, friend_id);
 }
 
 export function exampleOp( a, b, c ) {

@@ -3,9 +3,9 @@ package main
 import (
 	"arla/schema"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
-	"errors"
 )
 
 import "github.com/jackc/pgx"
@@ -44,6 +44,7 @@ func userError(err error) *Error {
 		if strings.HasPrefix(pgerr.Message, "Error: ") {
 			pgerr.Message = strings.Replace(pgerr.Message, "Error: ", "", 1)
 		}
+		e.Message = pgerr.Message
 		// Detect errors with extended info
 		if strings.HasPrefix(pgerr.Message, "UserError:") {
 			e.Message = strings.Replace(pgerr.Message, "UserError: ", "", 1)
@@ -82,8 +83,8 @@ func authError(err error) *Error {
 // shutdown or when qs or ms fails then return a "come back later" error
 func tempError() *Error {
 	return &Error{
-		err: errors.New("system temporarily offline"),
-		code: http.StatusServiceUnavailable,
+		err:     errors.New("system temporarily offline"),
+		code:    http.StatusServiceUnavailable,
 		Message: "Service is temporarily unavailable",
 	}
 }

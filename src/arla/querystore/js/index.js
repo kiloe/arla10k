@@ -310,12 +310,16 @@ class MutationError extends Error {
 	function sqlForProperty(klass, session, ast, vars=[], i=0){
 		// fetch requested property
 		let property = klass.props[ast.name];
-		if( !property ){
-			throw new QueryError({
-				message: `no such property`,
-				property: ast.name,
-				kind: klass.name,
-			});
+		// if no property or query then assume it must be a simple
+		// field included via sql 
+		if( !property || !property.query ){
+			if( ast.args.length > 0 ){
+				err(`property type does not accept arguments`);
+			}
+			if( ast.filters.length > 0 ){
+				err(`property type does not accept filters`);
+			}
+			return `$prev.${ast.name}`;
 		}
 		if( !property.type ){
 			throw new QueryError({
@@ -333,16 +337,6 @@ class MutationError extends Error {
 				kind: klass.name,
 			});
 		};
-		// simple property fetch
-		if( !property.query ){
-			if( ast.args.length > 0 ){
-				err(`property type does not accept arguments`);
-			}
-			if( ast.filters.length > 0 ){
-				err(`property type does not accept filters`);
-			}
-			return `$prev.${property.name}`;
-		}
 		// build context that can be used to reference parent table
 		let cxtReverse = {};
 		let cxt = Object.keys(klass.props).reduce(function(o, k){
@@ -747,7 +741,10 @@ class MutationError extends Error {
 				return db.transaction(fn);
 			},
 		};
-		var queryArgs = fn.apply(cxt, m.args);
+		var queryArgs;
+		db.transaction(function(){
+			queryArgs = fn.bind(cxt)(...m.args);
+		});
 		console.debug(`action ${m.name} returned`, queryArgs);
 		if( !queryArgs ){
 			return;
