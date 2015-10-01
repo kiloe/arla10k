@@ -1,5 +1,5 @@
 import * as actions from './actions';
-import * as schema from './schema';
+import root from './schema';
 
 arla.configure({
 	// set the API version
@@ -8,7 +8,7 @@ arla.configure({
 	actions: actions,
 	// schema is an Object that declares the struture of your data
 	// and how queries should be built.
-	schema: schema,
+	schema: {root},
 	// the authenticate function accepts user credentials and returns
 	// the query that will return the values that will be used as the
 	// context/claims/session for future requests

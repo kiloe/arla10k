@@ -19,6 +19,11 @@ export default class member extends arla.Entity {
 			return [`select * from ${email} where member_id = $1`, this.id];
 		}},
 
+		// allow non-existant properties to appear
+		email_addresses_plus: {type: 'array', of: email, query: function(){
+			return [`select email.*,true as fake from ${email} where member_id = $1`, this.id];
+		}},
+
 		// addrs will be precompputed onChange of email records
 		// when type=array is found on non-query columns it assumes a type of jsonb
 		addrs: {type: 'array', of: 'text'},
@@ -35,6 +40,13 @@ export default class member extends arla.Entity {
 					or m2.id = friend.member_2_id
 				where m1.id = $1 and m2.id != $1
 			`,this.id];
+		}},
+
+		member_by_id: {type:'member', query:function(id){
+			return [`
+				select * from member
+				where id = $1
+			`, id];
 		}},
 
 		// contrived example of a computed property

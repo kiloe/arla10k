@@ -43,8 +43,11 @@ name "propertyname"
 ident
 	= $([a-zA-Z_][a-zA-Z0-9_]+)
 
+arg "arg"
+	= WS* v:value { return v }
+
 args "args"
-	= "(" WS* ")" { return [] }
+	= "(" WS* a:arg* WS* ")" { return a || [] }
 
 op "operator"
 	= $(">=" / "<=" / "==" / "!=" / ">" / "<" / "=")

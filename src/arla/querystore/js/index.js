@@ -262,6 +262,16 @@ class MutationError extends Error {
 		}
 	}
 
+	function queryArg(v, args) {
+		if(v.type == 'placeholder'){
+			if( v.value > args.length ){
+				throw new QueryError({message: `missing argument for placeholder $${v.value}`});
+			}
+			return args[v.value - 1];
+		}
+		throw new UserError(`query args must use placeholder values`);
+	}
+
 	function userValue(v, args) {
 		if(v.type == 'ident'){
 			return `$prev.${v.value}`;
@@ -310,14 +320,23 @@ class MutationError extends Error {
 	function sqlForProperty(klass, session, ast, vars=[], i=0){
 		// fetch requested property
 		let property = klass.props[ast.name];
+		// shorthand for errors
+		let err = function(msg){
+			throw new QueryError({
+				message: msg,
+				property: ast.name,
+				type: property ? property.type : null,
+				kind: klass.name,
+			});
+		};
+		if( !property && ast.args.length > 0 ){
+			err(`${klass.name} does not have property ${ast.name}`);
+		}
 		// if no property or query then assume it must be a simple
 		// field included via sql 
 		if( !property || !property.query ){
-			if( ast.args.length > 0 ){
-				err(`property type does not accept arguments`);
-			}
 			if( ast.filters.length > 0 ){
-				err(`property type does not accept filters`);
+				err(`${klass.name} ${ast.name} can not accept filters`);
 			}
 			return `$prev.${ast.name}`;
 		}
@@ -328,15 +347,6 @@ class MutationError extends Error {
 				kind: klass.name,
 			});
 		}
-		// shorthand for errors
-		let err = function(msg){
-			throw new QueryError({
-				message: msg,
-				property: property.name,
-				type: property.type,
-				kind: klass.name,
-			});
-		};
 		// build context that can be used to reference parent table
 		let cxtReverse = {};
 		let cxt = Object.keys(klass.props).reduce(function(o, k){
@@ -346,7 +356,8 @@ class MutationError extends Error {
 		},{});
 		cxt.session = session;
 		// fetch the sql query
-		let sql = property.query.apply(cxt, ast.args);
+		let queryArgs = ast.args.map(v => queryArg(v,vars));
+		let sql = property.query.apply(cxt, queryArgs);
 		// check if no query returned
 		if( !sql ){
 			err(`${klass.name}.${property.name} did not return a valid sql query`);

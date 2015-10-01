@@ -75,6 +75,26 @@ func TestAPI(t *testing.T) {
 		}
 	`)
 
+	// fetch email_address_plus record via property
+	bob.Query(`
+		me(){
+			username
+			email_addresses_plus() {
+				fake
+				addr
+			}
+		}
+	`).ShouldReturn(`
+		{
+			"me":{
+				"username":"bob",
+				"email_addresses_plus": [
+					{"fake":true, "addr": "bob@bob.com"}
+				]
+			}
+		}
+	`)
+
 	// execute mutation to change email address
 	bob.Exec("updateEmailAddress", "bob@bob.com", "bob@gmail.com").ShouldSucceed()
 
@@ -416,6 +436,21 @@ func TestAPI(t *testing.T) {
 			"me":{
 				"bob": {"username":"bob"},
 				"kate": {"username":"kate"}
+			}
+		}
+	`)
+
+	// should be possible to pass in placeholder args to query calls
+	alice.Query(`
+		me(){
+			member_by_id($1) {
+				username
+			}
+		}
+	`, bob.ID.String()).ShouldReturn(`
+		{
+			"me":{
+				"member_by_id": {"username":"bob"}
 			}
 		}
 	`)
