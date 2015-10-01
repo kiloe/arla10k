@@ -247,9 +247,9 @@ func TestAPI(t *testing.T) {
 	// ----------------------------------------
 
 	// test relationships
-	alice.Exec("addFriend", "c909d030-4289-4021-8aba-9d0ad0c0daae", bob.ID.String()).ShouldSucceed()
-	bob.Exec("addFriend", "9aeb2c32-0aea-4fcc-b850-8dbd13fac631", alice.ID.String()).ShouldFail() // already friends
-	kate.Exec("addFriend", "8f42bb10-eac9-4a68-8446-a8d21353e6ca", alice.ID.String()).ShouldSucceed()
+	alice.Exec("addFriend", bob.ID.String()).ShouldSucceed()
+	bob.Exec("addFriend", alice.ID.String()).ShouldFail() // already friends
+	kate.Exec("addFriend", alice.ID.String()).ShouldSucceed()
 	alice.Query(`me(){friends().pluck(username)}`).ShouldReturn(`
 		{
 			"me":{

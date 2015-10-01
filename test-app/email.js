@@ -2,6 +2,7 @@
 export default class email extends arla.Entity {
 
 	static props = {
+		id:                  {type:'uuid', pk:true},
 		member_id:           {ref: 'member'},
 		addr:                {type: 'text', unique:true}
 	}

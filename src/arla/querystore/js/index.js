@@ -171,9 +171,6 @@ class MutationError extends Error {
 		if( !klass.props ){
 			throw UserError('class '+klass.name+' has no props');
 		}
-		if( !klass.props.id ){
-			klass.props.id = {type:'uuid', pk:true};
-		}
 		let columns = Object.keys(klass.props).reduce(function(props, k){
 			let prop = klass.props[k];
 			prop.name = k;
@@ -654,6 +651,9 @@ class MutationError extends Error {
 		query(sql, ...args){
 			return db.query(sql, ...args);
 		}
+		transaction(fn){
+			return db.transaction(fn);
+		}
 	}
 	arla.Entity = Entity;
 
@@ -737,12 +737,21 @@ class MutationError extends Error {
 		}
 		// exec the mutation func
 		console.debug(`action ${m.name} args:`, m.args, 'session:', m.token);
-		var queryArgs = fn.apply({session:m.token,replay:replay}, m.args);
-		if( !queryArgs ){
-			console.debug(`action ${m.name} was a noop`);
-			return [];
-		}
+		let cxt = {
+			session:m.token,
+			replay:replay,
+			query: function(sql, ...args){
+				return db.query(sql, ...args);
+			},
+			transaction: function(fn){
+				return db.transaction(fn);
+			},
+		};
+		var queryArgs = fn.apply(cxt, m.args);
 		console.debug(`action ${m.name} returned`, queryArgs);
+		if( !queryArgs ){
+			return;
+		}
 		if( !Array.isArray(queryArgs) ){
 			queryArgs = [queryArgs];
 		}

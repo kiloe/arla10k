@@ -8,6 +8,7 @@ export default class member extends arla.Entity {
 
 	static props = {
 		// simple properties
+		id:                  {type:'uuid', pk:true},
 		name:                {type: 'text', nullable:true},
 		username:             {type: 'text'},
 		password:             {type: 'text'},
