@@ -333,7 +333,7 @@ class MutationError extends Error {
 			err(`${klass.name} does not have property ${ast.name}`);
 		}
 		// if no property or query then assume it must be a simple
-		// field included via sql 
+		// field included via sql
 		if( !property || !property.query ){
 			if( ast.filters.length > 0 ){
 				err(`${klass.name} ${ast.name} can not accept filters`);
