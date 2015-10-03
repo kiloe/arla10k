@@ -19,8 +19,8 @@ SQL := src/arla/querystore/sql
 RUN := docker run $(RM) -i -v $(PWD):/app -w /app -v $(PWD)/$(CONF):/etc/postgresql/9.4/main
 GOPATH := $(PWD)
 GO := GOPATH=$(GOPATH) go
-BROWSERIFY := browserify
-PEGJS := pegjs
+BROWSERIFY := ./node_modules/.bin/browserify
+PEGJS := ./node_modules/.bin/pegjs
 
 build: bin/arla
 	docker build -t $(IMAGE) .
@@ -33,11 +33,14 @@ bin/test: bin/arla
 	mkdir -p bin
 	CGO_ENABLED=0 $(GO) test -c -o bin/test -v arla
 
-$(JS)/graphql.js: $(JS)/graphql.peg
+node_modules:
+	npm install
+
+$(JS)/graphql.js: $(JS)/graphql.peg node_modules
 	$(PEGJS) -e 'module.exports' < $< > $@
 
-$(SQL)/02_js.sql: $(JS)/index.js $(JS)/graphql.js
-	$(BROWSERIFY) $< -t [ /usr/local/lib/node_modules/babelify --modules common ] >> $@
+$(SQL)/02_js.sql: $(JS)/index.js $(JS)/graphql.js node_modules
+	$(BROWSERIFY) $< -t [ babelify --modules common ] >> $@
 
 src/arla/querystore/postgres_init.go: $(SQL)/02_js.sql $(wildcard $(SQL)/*.sql)
 	echo 'package querystore' > $@
@@ -51,6 +54,7 @@ release: build
 	docker push $(IMAGE)
 
 clean:
+	rm -rf node_modules
 	rm -f bin/arla
 	rm -f bin/test
 	rm -f src/arla/querystore/postgres_init.go
@@ -66,7 +70,7 @@ clean:
 test-client: build
 	docker rm -f 10k 2>/dev/null || true
 	docker run -i --name 10k -i \
-		-p 3000:80 \
+		-p 3030:80 \
 		-v $(PWD)/test-app:/app \
 		-w /app \
 		-v $(PWD)/$(CONF):/etc/postgresql/9.4/main \

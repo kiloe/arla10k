@@ -3,7 +3,7 @@ import {createClient} from '../../dist';
 describe('client', function(){
 
   var cfg = {
-    url: 'http://localhost:3000/'
+    url: 'http://localhost:3030/'
   };
 
   var bob = {
