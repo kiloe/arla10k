@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -187,6 +188,9 @@ func (p *postgres) cpConfig(name string) (err error) {
 }
 
 func (p *postgres) initdb() (err error) {
+	if p.alreadyInitialized() {
+		return nil
+	}
 	err = p.run("initdb", "--nosync", "--noclean")
 	if err != nil {
 		return err
@@ -196,6 +200,10 @@ func (p *postgres) initdb() (err error) {
 		return err
 	}
 	err = p.cpConfig("pg_hba.conf")
+	if err != nil {
+		return err
+	}
+	err = p.markAsInitialized()
 	if err != nil {
 		return err
 	}
@@ -350,7 +358,25 @@ func (p *postgres) pollForReady() <-chan (bool) {
 	return ch
 }
 
-// initialize the database
+func (p *postgres) initMarker() string {
+	return filepath.Join(os.Getenv("PGDATA"), ".init")
+}
+
+func (p *postgres) alreadyInitialized() bool {
+	f := p.initMarker()
+	b, err := ioutil.ReadFile(f)
+	if err != nil {
+		return false
+	}
+	return string(b) == "true"
+}
+
+func (p *postgres) markAsInitialized() error {
+	f := p.initMarker()
+	return ioutil.WriteFile(f, []byte("true"), 0644)
+}
+
+// (re)create the database
 func (p *postgres) init() error {
 	if err := p.run("createdb"); err != nil {
 		p.run("dropdb", "arla")
