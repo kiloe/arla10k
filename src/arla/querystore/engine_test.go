@@ -14,7 +14,7 @@ var qs Engine
 func TestMain(m *testing.M) {
 	var err error
 	qs, err = New(&Config{
-		Path:     "/app/test-app/index.js",
+		Path:     "/app/index.js",
 		LogLevel: INFO,
 	})
 	if err != nil {

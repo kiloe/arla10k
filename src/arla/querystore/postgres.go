@@ -149,13 +149,9 @@ func (p *postgres) Query(q *schema.Query, w io.Writer) error {
 
 // Authenticate returns the token claims for the given json values
 func (p *postgres) Authenticate(vals string) (schema.Token, error) {
-	var s string
 	r := p.queryPool.QueryRow("select arla_authenticate($1::json)", vals)
-	if err := r.Scan(&s); err != nil {
-		return nil, err
-	}
-	t := schema.Token{}
-	if err := json.Unmarshal([]byte(s), &t); err != nil {
+	var t schema.Token
+	if err := r.Scan(&t); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -163,13 +159,9 @@ func (p *postgres) Authenticate(vals string) (schema.Token, error) {
 
 // Register returns a mutation that will be used to create a user
 func (p *postgres) Register(vals string) (*schema.Mutation, error) {
-	var s string
 	r := p.queryPool.QueryRow("select arla_register($1::json)", vals)
-	if err := r.Scan(&s); err != nil {
-		return nil, err
-	}
 	var m schema.Mutation
-	if err := json.Unmarshal([]byte(s), &m); err != nil {
+	if err := r.Scan(&m); err != nil {
 		return nil, err
 	}
 	return &m, nil
@@ -239,12 +231,8 @@ func (p *postgres) Start() (err error) {
 		return
 	}
 	// load app info
-	var s string
 	r := p.queryPool.QueryRow("select arla_info()")
-	if err := r.Scan(&s); err != nil {
-		return err
-	}
-	if err := json.Unmarshal([]byte(s), &p.info); err != nil {
+	if err := r.Scan(&p.info); err != nil {
 		return err
 	}
 	return nil

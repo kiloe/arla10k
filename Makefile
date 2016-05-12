@@ -67,24 +67,24 @@ clean:
 	docker rm -f 10k 2>/dev/null || true
 	docker rmi -f $(IMAGE) 2>/dev/null || true
 
-test-client: build
+test-client: test-server
 	docker rm -f 10k 2>/dev/null || true
-	docker run -i --name 10k -i \
+	docker run -i --name 10k \
 		-p 3030:80 \
-		-v $(PWD)/test-app:/app \
 		-w /app \
 		-v $(PWD)/$(CONF):/etc/postgresql/9.4/main \
-		$(IMAGE) \
+		arla10ktest \
 			--secret=testing \
 			--debug \
 			--config-path=./config.js &
-	(cd client && npm test) || (docker logs 10k &> client-test.log && false)
+	(cd client && npm install && npm test) || (docker logs 10k &> client-test.log && false)
 	docker rm -f 10k 2>/dev/null || true
 
 
 test-server: bin/test build
-	$(RUN) --entrypoint bin/test $(IMAGE)
+	docker build -t arla10ktest -f Dockerfile.test .
+	docker run -e DEBUG=1 --rm -it --entrypoint=/bin/test arla10ktest
 
-test: test-server test-client
+test: test-client
 
 .PHONY: default build test test-client test-server release clean

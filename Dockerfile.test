@@ -1,0 +1,5 @@
+FROM arla/10k
+
+ADD test-app /app
+ADD bin/test bin/
+

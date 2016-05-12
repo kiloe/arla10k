@@ -670,7 +670,7 @@ func TestMain(m *testing.M) {
 	}
 	// start server
 	server := New(Config{
-		ConfigPath:     "test-app/config.js",
+		ConfigPath:     "config.js",
 		DataDir:        tmp,
 		Secret:         "mysecret",
 		Debug:          true,

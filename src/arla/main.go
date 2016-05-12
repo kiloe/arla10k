@@ -70,7 +70,7 @@ func (s *Server) startQueryEngine() (err error) {
 	qscfg := &querystore.Config{
 		Path:           s.cfg.ConfigPath,
 		MaxConnections: s.cfg.MaxConnections,
-		LogLevel:       querystore.INFO,
+		LogLevel:       querystore.DEBUG,
 	}
 	if s.cfg.Debug {
 		qscfg.LogLevel = querystore.DEBUG

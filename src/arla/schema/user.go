@@ -1,7 +1,7 @@
 package schema
 
 import (
-	"code.google.com/p/go.crypto/bcrypt"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // User is a registered person with access to query arla
